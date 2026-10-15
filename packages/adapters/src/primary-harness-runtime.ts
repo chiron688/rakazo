@@ -7,7 +7,11 @@ import type {
   ComputerRef,
   SandboxProvider,
 } from "@rakazo/adapter-kit";
-import { EXECUTION_HARNESS_VERSIONS } from "@rakazo/contracts";
+import {
+  EXECUTION_HARNESS_VERSIONS,
+  NativeLoginDescriptorSchema,
+  nativeLoginEndpoint,
+} from "@rakazo/contracts";
 import { isToolPauseResult } from "./approval-effect.js";
 import { buildClaudeProcess, runClaudeProtocol } from "./primary-harness-claude.js";
 import { buildCodexProcess, runCodexProtocol } from "./primary-harness-codex.js";
@@ -51,7 +55,9 @@ export interface PrimaryHarnessRuntimeOptions {
   profileId: string;
   profileRevision: number;
   sessionEpoch: string;
+  parentSessionEpoch?: string;
   nativeCheckpoint?: string;
+  nativeLogin?: boolean;
   /** Internal recursion guard. Native vendor delegation is never enabled. */
   helperDepth?: number;
   /** Durable checkpoint barrier; called before a native tool can have an effect. */
@@ -103,7 +109,7 @@ class PrimaryHarnessRuntime implements AgentRuntime {
       id: this.options.harness,
       contractVersion: "1",
       adapterVersion: this.options.runtimeVersion,
-      capabilities: PRIMARY_HARNESS_CAPABILITIES,
+      capabilities: { ...PRIMARY_HARNESS_CAPABILITIES, delegatedAgents: !this.options.nativeLogin },
     };
   }
 
@@ -208,12 +214,22 @@ class PrimaryHarnessRuntime implements AgentRuntime {
           ...build(request),
           isolation: "primary-harness",
           timeoutMs: MAX_TURN_MS,
+          ...(request.model.nativeLogin
+            ? {
+                credentialScope: {
+                  harness: request.model.nativeLogin.harness,
+                  connectionId: request.model.nativeLogin.connectionId,
+                  epoch: request.model.nativeLogin.epoch,
+                },
+              }
+            : {}),
           sessionScope: {
             threadId: request.threadId,
             profileId: this.options.profileId,
             profileRevision: this.options.profileRevision,
             accountId: this.options.accountId,
             epoch: this.options.sessionEpoch,
+            parentEpoch: this.options.parentSessionEpoch ?? this.options.sessionEpoch,
           },
         },
         { ...this.options.context, runId: request.runId, botId: request.botId, signal },
@@ -254,7 +270,8 @@ class PrimaryHarnessRuntime implements AgentRuntime {
         },
       });
       const tools = request.tools.filter(
-        (tool) => !this.options.helperDepth || tool.name !== "run_subagent",
+        (tool) =>
+          (!this.options.helperDepth && !request.model.nativeLogin) || tool.name !== "run_subagent",
       );
       const permittedTools = new Map(tools.map((tool) => [tool.name, tool]));
       if (permittedTools.size !== tools.length)
@@ -272,7 +289,11 @@ class PrimaryHarnessRuntime implements AgentRuntime {
           throw new Error("Native harness requested a tool before establishing its session.");
         const tool = permittedTools.get(name);
         if (!tool || !callId || callId.length > 256) {
-          throw new Error("Native harness requested an unauthorized tool.");
+          throw new Error(
+            request.model.nativeLogin && name === "run_subagent"
+              ? "Helpers are unavailable with native sign-in because this account requires exclusive credential access. Use an API-key profile for helper delegation."
+              : "Native harness requested an unauthorized tool.",
+          );
         }
         nativeObject(args);
         const signature = JSON.stringify([name, args]);
@@ -444,6 +465,7 @@ class PrimaryHarnessRuntime implements AgentRuntime {
       nativeSessionId,
       usageState,
       epoch: this.options.sessionEpoch,
+      credentialEpoch: request.model.nativeLogin?.epoch,
       profileId: this.options.profileId,
       profileRevision: this.options.profileRevision,
       accountId: this.options.accountId,
@@ -485,7 +507,42 @@ function validateNativeRequest(
   request: AgentRunRequest,
   options: PrimaryHarnessRuntimeOptions,
 ): void {
-  if (!request.model.apiKey || request.model.oauth) {
+  if (
+    options.harness !== "claude" &&
+    ((request.model.authScheme !== undefined && request.model.authScheme !== "api-key") ||
+      Object.keys(request.model.modelRoles ?? {}).length > 0)
+  ) {
+    throw new Error(
+      "This harness does not support Anthropic authentication or model role mappings.",
+    );
+  }
+  if (Boolean(request.model.nativeLogin) !== Boolean(options.nativeLogin))
+    throw new Error("Native authentication mode does not match the authorized runtime.");
+  if (request.model.nativeLogin) {
+    const account = NativeLoginDescriptorSchema.parse(request.model.nativeLogin);
+    const endpoint = nativeLoginEndpoint(account);
+    if (account.installationId !== options.sandbox.nativeStateInstallationId?.())
+      throw new Error(
+        "Native login belongs to a different runtime installation. Reconnect the account.",
+      );
+    if (
+      account.state !== "ready" ||
+      account.harness !== options.harness ||
+      account.spaceId !== options.context.spaceId ||
+      account.computerProviderRef !== options.computer.id ||
+      account.computerProviderRef !== options.computer.providerRef ||
+      account.computerHomeKey !== options.computer.botId ||
+      options.computer.kind !== "docker" ||
+      request.model.provider !== `native-${account.harness}` ||
+      request.model.baseUrl !== endpoint ||
+      request.model.apiKey ||
+      request.model.oauth ||
+      request.model.acceptsAudio
+    )
+      throw new Error(
+        "Native login must use its connected account, original computer, and official endpoint.",
+      );
+  } else if (!request.model.apiKey || request.model.oauth) {
     throw new Error(
       "Native harnesses require the selected account's API key; OAuth is unsupported.",
     );

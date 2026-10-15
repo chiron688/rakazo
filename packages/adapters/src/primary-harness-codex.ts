@@ -1,4 +1,5 @@
 import type { AgentRunRequest, SandboxProcessRequest } from "@rakazo/adapter-kit";
+import { codexProviderFailure, nativeProviderError } from "./primary-harness-errors.js";
 import { prepareNativeMedia } from "./primary-harness-media.js";
 import type { NativeProtocolChannel, NativeProtocolContext } from "./primary-harness-protocol.js";
 import { nativeObject, nativeString } from "./primary-harness-protocol.js";
@@ -7,6 +8,13 @@ import { nativeObject, nativeString } from "./primary-harness-protocol.js";
 export const CODEX_RESTRICTED_CONFIG = {
   "analytics.enabled": false,
   "features.shell_tool": false,
+  "features.image_generation": false,
+  "features.artifact": false,
+  "features.view_image": false,
+  "features.codex_hooks": false,
+  "features.memory_tool": false,
+  "features.remote_plugin": false,
+  "features.skill_mcp_dependency_install": false,
   "features.stable_environment_tools": false,
   "features.multi_agent": false,
   "features.multi_agent_v2": false,
@@ -35,7 +43,7 @@ export const CODEX_RESTRICTED_CONFIG = {
 } as const;
 
 export const CODEX_SANDBOX_RUNNER = String.raw`
-import {readFileSync,writeFileSync,mkdirSync,symlinkSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,symlinkSync,lstatSync,realpathSync} from 'node:fs';
 import {spawn,spawnSync} from 'node:child_process';
 const root='/opt/rakazo-harness/node_modules/@openai/codex';
 if(JSON.parse(readFileSync(root+'/package.json','utf8')).version!=='0.162.1')throw new Error('Unsupported Codex version');
@@ -53,13 +61,14 @@ function first(data){
  process.stdin.off('data',first);process.stdin.pause();
  let frame;try{frame=JSON.parse(buffer.subarray(0,end).toString());}catch{process.exit(1);}
  if(frame.method!=='rakazo/start'||!frame.params||typeof frame.params.endpoint!=='string')process.exit(1);
- const config={...frame.params.config,
+ if(frame.params.nativeLogin){if(realpathSync('/credentials/codex')!=='/credentials/codex'||!lstatSync('/credentials/codex/auth.json').isFile())throw new Error('Native login required');symlinkSync('/credentials/codex/auth.json',process.env.CODEX_HOME+'/auth.json');}
+ const config={...frame.params.config,...(frame.params.nativeLogin?{}:{
   'model_providers.rakazo.name':'Rakazo account',
   'model_providers.rakazo.base_url':frame.params.endpoint,
   'model_providers.rakazo.env_key':'OPENAI_API_KEY',
   'model_providers.rakazo.wire_api':'responses',
   'model_providers.rakazo.requires_openai_auth':false,
- };
+ })};
  if(frame.params.audioModel){
   const model=frame.params.audioModel;if(typeof model.slug!=='string'||!Array.isArray(model.input_modalities)||!model.input_modalities.includes('audio'))process.exit(1);
   const catalog=process.env.CODEX_HOME+'/rakazo-models.json';
@@ -101,7 +110,7 @@ export function buildCodexProcess(request: AgentRunRequest): SandboxProcessReque
   return {
     isolation: "primary-harness",
     argv: ["node", "--input-type=module", "--eval", CODEX_SANDBOX_RUNNER],
-    env: { OPENAI_API_KEY: request.model.apiKey ?? "" },
+    env: request.model.nativeLogin ? {} : { OPENAI_API_KEY: request.model.apiKey ?? "" },
   };
 }
 
@@ -110,9 +119,21 @@ export async function runCodexProtocol(
   context: NativeProtocolContext,
 ): Promise<void> {
   const media = await prepareNativeMedia(context.request, "codex");
+  const nativeLogin = Boolean(context.request.model.nativeLogin);
+  const config = {
+    ...CODEX_RESTRICTED_CONFIG,
+    ...(nativeLogin
+      ? {
+          model_provider: "openai",
+          cli_auth_credentials_store: "file",
+          forced_login_method: "chatgpt",
+        }
+      : {}),
+  };
   const bootstrap = await channel.request("rakazo/start", {
     endpoint: context.request.model.baseUrl,
-    config: CODEX_RESTRICTED_CONFIG,
+    config,
+    nativeLogin,
     // The native default catalog omits audio for unknown slugs. An explicit profile
     // declaration must reach the engine's catalog or it silently replaces audio with text.
     ...(context.request.model.acceptsAudio
@@ -150,29 +171,37 @@ export async function runCodexProtocol(
     },
   });
   await channel.send({ method: "initialized" });
-  const tools = [
-    {
-      type: "namespace",
-      name: "rakazo",
-      description: "Authorized Rakazo tools. Use these for all computer and integration actions.",
-      tools: context.tools.map(({ name, description, inputSchema }) => ({
-        type: "function",
-        name,
-        description,
-        inputSchema,
-      })),
-    },
-  ];
+  if (nativeLogin) {
+    const account = await channel.request("account/read", { refreshToken: false });
+    if (nativeObject(account.account).type !== "chatgpt")
+      throw new Error("Native ChatGPT account is disconnected. Sign in again.");
+  }
+  const tools = context.tools.length
+    ? [
+        {
+          type: "namespace",
+          name: "rakazo",
+          description:
+            "Authorized Rakazo tools. Use these for all computer and integration actions.",
+          tools: context.tools.map(({ name, description, inputSchema }) => ({
+            type: "function",
+            name,
+            description,
+            inputSchema,
+          })),
+        },
+      ]
+    : [];
   const parameters = {
     model: context.request.model.id,
-    modelProvider: "rakazo",
+    modelProvider: nativeLogin ? "openai" : "rakazo",
     baseInstructions: context.request.instructions,
     developerInstructions:
       "Use only the rakazo tool namespace. Native tools and environments are disabled.",
     approvalPolicy: "on-request",
     sandbox: "read-only",
     environments: [],
-    config: CODEX_RESTRICTED_CONFIG,
+    config,
     ...(context.nativeSessionId
       ? { threadId: context.nativeSessionId, excludeTurns: true }
       : { dynamicTools: tools, ephemeral: false }),
@@ -233,7 +262,10 @@ export async function runCodexProtocol(
         continue;
       throw new Error("Codex turn identity mismatch.");
     }
-    if (message.method === "item/tool/call") {
+    if (message.method === "error") {
+      const failure = codexProviderFailure(p.error);
+      if (failure) throw nativeProviderError("Codex", failure);
+    } else if (message.method === "item/tool/call") {
       if (p.namespace !== "rakazo")
         throw new Error("Codex requested a tool outside the authorized bridge.");
       const result = await context.callTool(
@@ -298,7 +330,10 @@ export async function runCodexProtocol(
     } else if (message.method === "turn/completed") {
       const completed = nativeObject(p.turn);
       if (completed.id !== turnId || completed.status !== "completed" || completed.error) {
-        throw new Error("Codex did not complete the turn successfully.");
+        const failure = codexProviderFailure(completed.error);
+        throw failure
+          ? nativeProviderError("Codex", failure)
+          : new Error("Codex did not complete the turn successfully.");
       }
       if (!streamed && finalText.length) context.emit({ type: "text", text: finalText.join("\n") });
       if (usageCount === 0)

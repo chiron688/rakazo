@@ -17,6 +17,7 @@ export interface PrimaryHarnessHelperState {
   signature: string;
   checkpoint?: string;
   result?: string;
+  waitingForInput?: boolean;
 }
 
 interface HelperOptions {
@@ -134,10 +135,17 @@ async function runHelper(
       ...(value === "running" ? { progress: detail } : { result: detail }),
     });
   };
-  const save = async (next: PrimaryHarnessHelperState) => {
-    validateState(next, signature);
-    await config.saveState(agentId, next);
-    state = next;
+  let savePending = Promise.resolve();
+  const save = (update: (current: PrimaryHarnessHelperState) => PrimaryHarnessHelperState) => {
+    // A child's pause checkpoint can arrive while its input event is being saved.
+    // Serialize transformations too, so neither write captures an obsolete state.
+    savePending = savePending.then(async () => {
+      const next = update(state);
+      validateState(next, signature);
+      await config.saveState(agentId, next);
+      state = next;
+    });
+    return savePending;
   };
   let child: AgentRuntime | undefined;
   // Keep the authorized parent run scope; the private epoch and callback IDs isolate children.
@@ -160,12 +168,10 @@ async function runHelper(
   signal.addEventListener("abort", abortChild, { once: true });
   try {
     signal.throwIfAborted();
-    await save(state);
+    await save((current) => current);
     signal.throwIfAborted();
     status("running", "Starting helper.");
-    const tools = request.tools.filter(
-      (tool) => !DELEGATION_TOOL_NAMES.has(tool.name) && !CHILD_CONTROL_TOOLS.has(tool.name),
-    );
+    const tools = request.tools.filter((tool) => !DELEGATION_TOOL_NAMES.has(tool.name));
     const permitted = new Map(tools.map((tool) => [tool.name, tool]));
     if (permitted.size !== tools.length) throw new Error("Duplicate native helper tools.");
     const effects = new Map<string, { signature: string; result: Promise<unknown> }>();
@@ -177,8 +183,11 @@ async function runHelper(
       instructions: [
         request.instructions,
         `You are a short-lived helper named ${JSON.stringify(name)} inside the parent bot's turn.`,
-        "Complete only the delegated task and return a concise result. Do not delegate or request user input. Use only the authorized tool bridge.",
+        "Complete only the delegated task and return a concise result. Do not delegate further. Request user input only when needed through the authorized tool bridge.",
         input.instructions,
+        state.waitingForInput
+          ? `Canonical parent continuation after your input request:\n${boundedInput(request.prompt, "continuation", 128 * 1024)}`
+          : undefined,
       ]
         .filter(Boolean)
         .join("\n"),
@@ -196,7 +205,7 @@ async function runHelper(
       executeTool: async (toolName, args, id) => {
         signal.throwIfAborted();
         const tool = permitted.get(toolName);
-        if (!tool || !request.executeTool)
+        if (!tool || CHILD_CONTROL_TOOLS.has(toolName) || !request.executeTool)
           throw new Error("Native helper requested an unauthorized tool.");
         nativeObject(args);
         const key = effectId(id);
@@ -230,8 +239,9 @@ async function runHelper(
       ...options,
       context: { ...options.context, runId, signal },
       sessionEpoch: `helper-${identity}`,
+      parentSessionEpoch: options.parentSessionEpoch ?? options.sessionEpoch,
       nativeCheckpoint: state.checkpoint,
-      onCheckpoint: (checkpoint) => save({ ...state, checkpoint }),
+      onCheckpoint: (checkpoint) => save((current) => ({ ...current, checkpoint })),
       helperDepth: 1,
     });
     signal.throwIfAborted();
@@ -262,8 +272,18 @@ async function runHelper(
         status("running", `Using ${event.name}.`);
       } else if (event.type === "progress") {
         status("running", event.text.slice(0, 800));
-      } else if (event.type === "ask" || event.type === "takeover" || event.type === "subagent") {
-        throw new Error("Native helpers cannot delegate or request user control.");
+      } else if (event.type === "ask" || event.type === "takeover") {
+        const controlTool = event.type === "ask" ? "ask_user" : "request_takeover";
+        if (!permitted.has(controlTool) || !state.checkpoint)
+          throw new Error(
+            "Native helper input requires an authorized tool and durable checkpoint.",
+          );
+        await save((current) => ({ ...current, waitingForInput: true }));
+        emit(event);
+        approvalPaused = true;
+        throw new NativeHarnessPaused();
+      } else if (event.type === "subagent") {
+        throw new Error("Native helpers cannot delegate further.");
       } else if (event.type === "done") {
         complete = true;
         if (!output && event.text) output = event.text;
@@ -273,7 +293,7 @@ async function runHelper(
     if (approvalPaused) throw new NativeHarnessPaused();
     if (!complete) throw new Error("Native helper ended without explicit completion.");
     const result = boundedResult(output.trim() || "The helper finished without a text response.");
-    await save({ ...state, result });
+    await save((current) => ({ ...current, result, waitingForInput: false }));
     signal.throwIfAborted();
     status("completed", result);
     return result;
@@ -295,6 +315,7 @@ function validateState(state: PrimaryHarnessHelperState, signature: string): voi
   if (
     state.version !== 1 ||
     state.signature !== signature ||
+    (state.waitingForInput !== undefined && typeof state.waitingForInput !== "boolean") ||
     (state.checkpoint !== undefined &&
       (typeof state.checkpoint !== "string" ||
         Buffer.byteLength(state.checkpoint, "utf8") > MAX_CHECKPOINT_BYTES)) ||

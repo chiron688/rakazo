@@ -145,3 +145,85 @@ describe("Pi profile driver validation", () => {
     ).toThrow("endpoint overrides");
   });
 });
+
+const nativeDescriptor = {
+  kind: "native_login",
+  installationId: "a".repeat(32),
+  harness: "codex",
+  connectionId: "11111111-1111-4111-8111-111111111111",
+  epoch: "22222222-2222-4222-8222-222222222222",
+  spaceId: "space-A",
+  computerId: "computer-A",
+  computerProviderRef: "container-A",
+  computerHomeKey: "home-A",
+  state: "ready",
+  region: "global",
+};
+const nativeProfile = {
+  ...profile,
+  provider: "native-codex",
+  harness: "codex",
+  computerId: "computer-A",
+  endpoint: "https://chatgpt.com/backend-api/codex",
+  authScheme: "api-key",
+  modelRoles: {},
+  inputModalities: [],
+};
+describe("native subscription account binding", () => {
+  it("never converts a damaged native account record into an API-key request", async () => {
+    await expect(
+      resolveProfileModel(
+        deps("{damaged descriptor"),
+        { ...scope, spaceId: "space-A" },
+        nativeProfile,
+        credential,
+      ),
+    ).rejects.toThrow("Native login account configuration is invalid");
+  });
+
+  it("passes only the descriptor and never extracts an API token", async () => {
+    const result = await resolveProfileModel(
+      deps(JSON.stringify(nativeDescriptor)),
+      { ...scope, spaceId: "space-A" },
+      nativeProfile,
+      credential,
+    );
+    expect(result.model.nativeLogin).toEqual(nativeDescriptor);
+    expect(result.model.apiKey).toBeUndefined();
+    expect(result.redact).toEqual([]);
+  });
+  it.each([
+    { state: "pending" },
+    { state: "disconnected" },
+    { spaceId: "other-space" },
+    { computerId: "other-computer" },
+    { harness: "kimi" },
+  ])("rejects an incompatible or revoked descriptor %j", async (change) => {
+    await expect(
+      resolveProfileModel(
+        deps(JSON.stringify({ ...nativeDescriptor, ...change })),
+        { ...scope, spaceId: "space-A" },
+        nativeProfile,
+        credential,
+      ),
+    ).rejects.toThrow("Native login requires");
+  });
+  it.each([
+    { provider: "openai" },
+    { harness: "pi" },
+    { endpoint: "https://custom.example.test" },
+    { computerId: null },
+    { authScheme: "bearer" },
+    { modelRoles: { haiku: "model" } },
+    { inputModalities: ["audio"] },
+  ])("rejects incompatible profile settings %j", async (change) => {
+    await expect(
+      resolveProfileModel(
+        deps(JSON.stringify(nativeDescriptor)),
+        { ...scope, spaceId: "space-A" },
+        { ...nativeProfile, ...change },
+        credential,
+      ),
+    ).rejects.toThrow("Native login requires");
+  });
+});

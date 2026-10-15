@@ -14,7 +14,11 @@ import { join } from "node:path";
 import type { AgentRunRequest, AgentRuntimeEvent, ProcessEvent } from "@rakazo/adapter-kit";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { CLAUDE_SANDBOX_RUNNER, runClaudeProtocol } from "./primary-harness-claude.js";
+import {
+  buildClaudeProcess,
+  CLAUDE_SANDBOX_RUNNER,
+  runClaudeProtocol,
+} from "./primary-harness-claude.js";
 import { CODEX_SANDBOX_RUNNER, runCodexProtocol } from "./primary-harness-codex.js";
 import {
   NativeEventQueue,
@@ -158,6 +162,13 @@ async function contents(directory: string): Promise<Buffer[]> {
 describe.skipIf(!modules)("actual pinned native engines against local fake APIs", () => {
   it.each([
     { harness: "claude", media: "text" },
+    { harness: "claude", media: "zai-haiku" },
+    { harness: "claude", media: "zai-sonnet" },
+    { harness: "claude", media: "zai-opus" },
+    { harness: "claude", media: "kimi-haiku" },
+    { harness: "claude", media: "kimi-sonnet" },
+    { harness: "claude", media: "kimi-opus" },
+    { harness: "claude", media: "kimi-fable" },
     { harness: "codex", media: "text" },
     { harness: "claude", media: "image" },
     { harness: "codex", media: "image" },
@@ -204,7 +215,12 @@ describe.skipIf(!modules)("actual pinned native engines against local fake APIs"
       const home = join(root, "home");
       const sessions = join(root, "sessions");
       await mkdir(sessions);
+      const compatible = media.startsWith("zai-") || media.startsWith("kimi-");
+      const authScheme = media.startsWith("zai-") ? ("bearer" as const) : ("api-key" as const);
+      const configuredModel = media.startsWith("zai-") ? "glm-5.3" : "k3-256k";
+      const role = media.split("-")[1] ?? "sonnet";
       let count = 0;
+      const headers: IncomingMessage["headers"][] = [];
       const bodies: Record<string, unknown>[] = [];
       const server = createServer(async (req: IncomingMessage, res) => {
         let raw = "";
@@ -220,6 +236,7 @@ describe.skipIf(!modules)("actual pinned native engines against local fake APIs"
           return;
         }
         bodies.push(JSON.parse(raw));
+        headers.push(req.headers);
         count++;
         if (harness === "claude") anthropic(res, count, media === "approval-pause");
         else responses(res, count, media === "approval-pause");
@@ -235,6 +252,65 @@ describe.skipIf(!modules)("actual pinned native engines against local fake APIs"
       let nativeResultWrittenBeforePause = false;
       try {
         for (let turn = 0; turn < 2; turn++) {
+          const request: AgentRunRequest = {
+            runId: `run-${media === "approval-pause" ? 0 : turn}`,
+            botId: "bot",
+            threadId: "thread",
+            prompt: `Read note.md; turn ${turn}`,
+            history: media.startsWith("image")
+              ? [
+                  {
+                    id: "history-media",
+                    role: "user",
+                    content: "Earlier image.",
+                    images: [{ name: "earlier.png", mimeType: "image/png", data: imageBytes }],
+                  },
+                ]
+              : [],
+            ...(media.startsWith("image")
+              ? {
+                  currentTurnImages: [
+                    { name: "current.png", mimeType: "image/png" as const, data: imageBytes },
+                  ],
+                }
+              : {}),
+            ...(media === "audio"
+              ? {
+                  currentTurnAudio: [
+                    { name: "original.wav", mimeType: "audio/wav" as const, data: audioBytes },
+                  ],
+                }
+              : {}),
+            instructions: "Use only the authorized read_file tool, then summarize.",
+            tools: [tool],
+            model: {
+              id:
+                harness === "claude"
+                  ? compatible
+                    ? role
+                    : "claude-sonnet-4-5"
+                  : media === "audio"
+                    ? "configured-audio-model"
+                    : "gpt-5.4",
+              acceptsImages: media.startsWith("image"),
+              acceptsAudio: media === "audio",
+              provider: harness === "claude" ? "anthropic" : "openai",
+              apiKey: fakeKey,
+              ...(compatible
+                ? {
+                    authScheme,
+                    modelRoles: {
+                      haiku: configuredModel,
+                      sonnet: configuredModel,
+                      opus: configuredModel,
+                      fable: configuredModel,
+                      subagent: configuredModel,
+                    },
+                  }
+                : {}),
+              baseUrl: endpoint,
+            },
+          };
           await mkdir(home, { recursive: true, mode: 0o700 });
           await mkdir(join(root, "tmp"), { recursive: true, mode: 0o700 });
           const source = (harness === "claude" ? CLAUDE_SANDBOX_RUNNER : CODEX_SANDBOX_RUNNER)
@@ -249,7 +325,7 @@ describe.skipIf(!modules)("actual pinned native engines against local fake APIs"
               TMPDIR: join(root, "tmp"),
               HOME: home,
               ...(harness === "claude"
-                ? { ANTHROPIC_API_KEY: fakeKey, ANTHROPIC_BASE_URL: endpoint }
+                ? buildClaudeProcess(request).env
                 : { OPENAI_API_KEY: fakeKey }),
             },
             stdio: ["pipe", "pipe", "pipe"],
@@ -319,51 +395,6 @@ describe.skipIf(!modules)("actual pinned native engines against local fake APIs"
                   }
                 : params,
             );
-          const request: AgentRunRequest = {
-            runId: `run-${media === "approval-pause" ? 0 : turn}`,
-            botId: "bot",
-            threadId: "thread",
-            prompt: `Read note.md; turn ${turn}`,
-            history: media.startsWith("image")
-              ? [
-                  {
-                    id: "history-media",
-                    role: "user",
-                    content: "Earlier image.",
-                    images: [{ name: "earlier.png", mimeType: "image/png", data: imageBytes }],
-                  },
-                ]
-              : [],
-            ...(media.startsWith("image")
-              ? {
-                  currentTurnImages: [
-                    { name: "current.png", mimeType: "image/png" as const, data: imageBytes },
-                  ],
-                }
-              : {}),
-            ...(media === "audio"
-              ? {
-                  currentTurnAudio: [
-                    { name: "original.wav", mimeType: "audio/wav" as const, data: audioBytes },
-                  ],
-                }
-              : {}),
-            instructions: "Use only the authorized read_file tool, then summarize.",
-            tools: [tool],
-            model: {
-              id:
-                harness === "claude"
-                  ? "claude-sonnet-4-5"
-                  : media === "audio"
-                    ? "configured-audio-model"
-                    : "gpt-5.4",
-              acceptsImages: media.startsWith("image"),
-              acceptsAudio: media === "audio",
-              provider: harness === "claude" ? "anthropic" : "openai",
-              apiKey: fakeKey,
-              baseUrl: endpoint,
-            },
-          };
           const output: AgentRuntimeEvent[] = [];
           const calls: string[] = [];
           const priorSession = nativeSessionId;
@@ -471,6 +502,15 @@ describe.skipIf(!modules)("actual pinned native engines against local fake APIs"
             expect(JSON.stringify(body)).toContain('"type":"input_audio"');
             expect(body.model).toBe("configured-audio-model");
           }
+        }
+        if (compatible) {
+          for (const header of headers) {
+            expect(header[authScheme === "bearer" ? "authorization" : "x-api-key"]).toBe(
+              authScheme === "bearer" ? `Bearer ${fakeKey}` : fakeKey,
+            );
+            expect(header[authScheme === "bearer" ? "x-api-key" : "authorization"]).toBeUndefined();
+          }
+          for (const body of bodies) expect(body.model).toBe(configuredModel);
         }
         for (const body of bodies) {
           if (harness === "claude")

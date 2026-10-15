@@ -320,6 +320,8 @@ model ExecutionProfile {
   provider       String
   credentialId   String
   protocol       String
+  authScheme      String                 @default("api-key")
+  modelRoles      Json                   @default("{}")
   endpoint       String?
   modelId        String
   runtimeVersion String
@@ -351,16 +353,35 @@ model NativeHarnessSession {
   credentialSecretId String
   epoch           String @default(uuid())
   activeRunId     String?
+  lastRunId          String?
   activeLeaseFence Int?
   interruptedRunId String?
   interrupted     Boolean @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  cleanupScope       Json?
 
   @@unique([botId, threadId, profileId])
   @@index([spaceId, userId])
   @@map("native_harness_sessions")
 }
+
+// Exact-scope cleanup survives the deletion of the account, bot, thread, or computer.
+model NativeStateCleanup {
+  id         String   @id @default(cuid())
+  spaceId    String
+  userId     String
+  computerId String
+  scope      Json
+  createdAt  DateTime @default(now())
+  attempts   Int      @default(0)
+  lastError  String?
+
+  @@index([computerId])
+  @@index([createdAt])
+  @@map("native_state_cleanups")
+}
+
 
 model UserModelCredential {
   id          String                 @id @default(cuid())
@@ -1082,6 +1103,7 @@ model ComputerExecutionLease {
   runId      String
   fence      Int      @default(0)
   expiresAt  DateTime
+  exclusive  Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

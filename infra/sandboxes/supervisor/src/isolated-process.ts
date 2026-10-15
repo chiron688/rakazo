@@ -14,7 +14,15 @@ const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 const MAX_QUEUED_INPUT_BYTES = 32 * 1024 * 1024;
 const MAX_TIMEOUT_MS = 60 * 60 * 1000;
 const IDENTITY_HEADER = "x-rakazo-runtime-bot-id";
+const MODEL_ROLE_ENV = new Set([
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  "ANTHROPIC_DEFAULT_FABLE_MODEL",
+  "CLAUDE_CODE_SUBAGENT_MODEL",
+]);
 const CREDENTIAL_ENV = new Set([
+  ...MODEL_ROLE_ENV,
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",
   "ANTHROPIC_BASE_URL",
@@ -25,19 +33,44 @@ const CREDENTIAL_ENV = new Set([
   "KIMI_DISABLE_TELEMETRY",
 ]);
 
+const sessionScopeSchema = z
+  .object({
+    threadId: z.string().min(1).max(200),
+    profileId: z.string().min(1).max(200),
+    profileRevision: z.number().int().positive(),
+    accountId: z.string().min(1).max(200),
+    epoch: z.string().min(1).max(200),
+    parentEpoch: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+const credentialScopeSchema = z
+  .object({
+    harness: z.enum(["codex", "kimi"]),
+    connectionId: z.string().min(1).max(200),
+    epoch: z.string().min(1).max(200),
+  })
+  .strict();
+export const nativeStateCleanupRequest = z.union([
+  z
+    .object({
+      expectedInstallationId: z.string().min(1).max(200),
+      sessionScope: sessionScopeSchema,
+    })
+    .strict(),
+  z
+    .object({
+      expectedInstallationId: z.string().min(1).max(200),
+      credentialScope: credentialScopeSchema,
+    })
+    .strict(),
+]);
+type NativeStateCleanupRequest = z.infer<typeof nativeStateCleanupRequest>;
+
 export const isolatedProcessRequest = z
   .object({
     isolation: z.literal("primary-harness"),
-    sessionScope: z
-      .object({
-        threadId: z.string().min(1).max(200),
-        profileId: z.string().min(1).max(200),
-        profileRevision: z.number().int().positive(),
-        accountId: z.string().min(1).max(200),
-        epoch: z.string().min(1).max(200),
-      })
-      .strict()
-      .optional(),
+    sessionScope: sessionScopeSchema.optional(),
+    credentialScope: credentialScopeSchema.optional(),
     argv: z
       .array(
         z
@@ -61,8 +94,35 @@ export const isolatedProcessRequest = z
   })
   .strict()
   .refine((request) => Object.keys(request.env ?? {}).every((key) => CREDENTIAL_ENV.has(key)), {
-    message: "Runtime environment may only contain supported credentials and endpoints.",
-  });
+    message:
+      "Runtime environment may only contain supported credentials, endpoints, and model roles.",
+  })
+  .refine(
+    (request) =>
+      !(
+        "ANTHROPIC_API_KEY" in (request.env ?? {}) && "ANTHROPIC_AUTH_TOKEN" in (request.env ?? {})
+      ),
+    { message: "Choose exactly one Anthropic credential scheme." },
+  )
+  .refine(
+    (request) =>
+      Object.entries(request.env ?? {}).every(
+        ([key, value]) =>
+          !MODEL_ROLE_ENV.has(key) ||
+          (value.length <= 200 &&
+            value.trim().length > 0 &&
+            [...value].every((char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)),
+      ),
+    { message: "Runtime model role IDs must be bounded and contain no control characters." },
+  )
+  .refine(
+    (request) =>
+      !request.credentialScope ||
+      !["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "KIMI_API_KEY"].some(
+        (key) => key in (request.env ?? {}),
+      ),
+    { message: "Native login cannot be mixed with API credentials." },
+  );
 
 type ProcessRequest = z.infer<typeof isolatedProcessRequest>;
 type Event = { type: "stdout" | "stderr"; data: string } | { type: "exit"; code: number };
@@ -82,6 +142,7 @@ export function isolatedProcessContainerOptions(
   request: ProcessRequest,
   networkName: string,
   sessionVolume?: string,
+  credentialVolume?: string,
 ): Docker.ContainerCreateOptions {
   return {
     name: `rakazo-harness-${id}`,
@@ -126,18 +187,28 @@ export function isolatedProcessContainerOptions(
         "/tmp": "rw,nosuid,nodev,noexec,size=64m,mode=1777",
       },
       LogConfig: { Type: "none", Config: {} },
-      ...(sessionVolume
-        ? {
-            Mounts: [
+      Mounts: [
+        ...(sessionVolume
+          ? [
               {
                 Type: "volume" as const,
                 Source: sessionVolume,
                 Target: "/sessions",
                 ReadOnly: false,
               },
-            ],
-          }
-        : {}),
+            ]
+          : []),
+        ...(credentialVolume
+          ? [
+              {
+                Type: "volume" as const,
+                Source: credentialVolume,
+                Target: "/credentials",
+                ReadOnly: false,
+              },
+            ]
+          : []),
+      ],
     },
   };
 }
@@ -164,6 +235,52 @@ export function sessionVolumeName(
     )
     .digest("hex");
   return `rakazo-harness-session-${digest}`;
+}
+
+/** A root and its bounded mediated helpers share cleanup ownership, never their transcript files. */
+export function sessionFamilyName(
+  owner: string,
+  identity: ProcessIdentity,
+  scope: NonNullable<ProcessRequest["sessionScope"]>,
+) {
+  return `rakazo-harness-family-${createHash("sha256")
+    .update(
+      JSON.stringify([
+        owner,
+        identity.spaceId,
+        identity.userId,
+        identity.computerBotId,
+        identity.botId,
+        scope.threadId,
+        scope.profileId,
+        scope.profileRevision,
+        scope.accountId,
+        scope.parentEpoch ?? scope.epoch,
+      ]),
+    )
+    .digest("hex")}`;
+}
+
+/** Connections can be reused by this user on this computer, never across users/installations. */
+export function credentialVolumeName(
+  owner: string,
+  identity: ProcessIdentity,
+  scope: NonNullable<ProcessRequest["credentialScope"]>,
+) {
+  const digest = createHash("sha256")
+    .update(
+      JSON.stringify([
+        owner,
+        identity.spaceId,
+        identity.userId,
+        identity.computerBotId,
+        scope.harness,
+        scope.connectionId,
+        scope.epoch,
+      ]),
+    )
+    .digest("hex");
+  return `rakazo-harness-credential-${digest}`;
 }
 
 /** Docker headers and UTF-8 code points can both cross arbitrary transport/frame boundaries. */
@@ -229,7 +346,9 @@ export class IsolatedProcessManager {
   private readonly running = new Map<string, RunningProcess>();
   private ready: Promise<void> | undefined;
   private closing = false;
-  private readonly sessionLeases = new Map<string, string>();
+  private readonly privateLeases = new Map<string, string>();
+  private readonly privateLeaseFamilies = new Map<string, string>();
+  private readonly deletingFamilies = new Set<string>();
   constructor(
     private readonly docker: Docker,
     private readonly egress: ComputerEgressMode,
@@ -270,31 +389,50 @@ export class IsolatedProcessManager {
     const sessionVolume = request.sessionScope
       ? sessionVolumeName(this.owner, identity, request.sessionScope)
       : undefined;
-    if (sessionVolume) {
-      if (this.sessionLeases.has(sessionVolume))
-        throw new Error("Native session is already leased.");
-      this.sessionLeases.set(sessionVolume, id);
-      try {
-        const labels = {
-          "rakazo.harnessSessionOwner": this.owner,
-          "rakazo.harnessSessionScope": sessionVolume,
-          "rakazo.harnessSessionComputer": identity.computerBotId,
-          "rakazo.harnessSessionBot": identity.botId,
-        };
+    const sessionFamily = request.sessionScope
+      ? sessionFamilyName(this.owner, identity, request.sessionScope)
+      : undefined;
+    if (sessionFamily && this.deletingFamilies.has(sessionFamily))
+      throw new Error("Native session family is being removed.");
+    const credentialVolume = request.credentialScope
+      ? credentialVolumeName(this.owner, identity, request.credentialScope)
+      : undefined;
+    const volumes = [
+      ...(sessionVolume ? [{ name: sessionVolume, kind: "session" as const }] : []),
+      ...(credentialVolume ? [{ name: credentialVolume, kind: "credential" as const }] : []),
+    ];
+    if (volumes.some(({ name }) => this.privateLeases.has(name)))
+      throw new Error("Native private state is already leased.");
+    for (const { name } of volumes) this.privateLeases.set(name, id);
+    if (sessionVolume && sessionFamily) this.privateLeaseFamilies.set(sessionVolume, sessionFamily);
+    const releaseLeases = () => {
+      for (const { name } of volumes) {
+        this.privateLeases.delete(name);
+        this.privateLeaseFamilies.delete(name);
+      }
+    };
+    try {
+      for (const { name, kind } of volumes) {
+        const labels = this.privateVolumeLabels(
+          identity,
+          name,
+          kind,
+          kind === "session" ? sessionFamily : undefined,
+        );
         const volume = await this.docker
-          .getVolume(sessionVolume)
+          .getVolume(name)
           .inspect()
           .catch(async (error: unknown) => {
             if (!isMissing(error)) throw error;
-            return this.docker.createVolume({ Name: sessionVolume, Labels: labels });
+            return this.docker.createVolume({ Name: name, Labels: labels });
           });
-        if (Object.entries(labels).some(([key, value]) => volume.Labels?.[key] !== value)) {
-          throw new Error("Native session volume ownership mismatch.");
-        }
-      } catch (error) {
-        this.sessionLeases.delete(sessionVolume);
-        throw error;
+        if (!this.matchesPrivateVolume(volume.Labels, labels, kind === "session"))
+          throw new Error("Native private volume ownership mismatch.");
+        assertActive();
       }
+    } catch (error) {
+      releaseLeases();
+      throw error;
     }
     // Separate network; no supervisor, team computer or other runtime joins it.
     const network = await this.docker
@@ -307,7 +445,7 @@ export class IsolatedProcessManager {
         Labels: { "rakazo.harness": "true", "rakazo.harnessOwner": this.owner },
       })
       .catch((error: unknown) => {
-        if (sessionVolume) this.sessionLeases.delete(sessionVolume);
+        releaseLeases();
         throw error;
       });
     let container: Docker.Container | undefined;
@@ -331,7 +469,7 @@ export class IsolatedProcessManager {
             if (!isMissing(error)) throw error;
           });
           this.running.delete(id);
-          if (sessionVolume) this.sessionLeases.delete(sessionVolume);
+          releaseLeases();
         } finally {
           attached?.destroy();
           await network.remove().catch(() => undefined);
@@ -392,6 +530,7 @@ export class IsolatedProcessManager {
         request,
         network.id,
         sessionVolume,
+        credentialVolume,
       );
       options.Labels = { ...options.Labels, "rakazo.harnessOwner": this.owner };
       container = await this.docker.createContainer(options);
@@ -509,6 +648,162 @@ export class IsolatedProcessManager {
     return process;
   }
 
+  private privateVolumeLabels(
+    identity: ProcessIdentity,
+    name: string,
+    kind: "session" | "credential",
+    family?: string,
+  ) {
+    return {
+      "rakazo.harnessSessionOwner": this.owner,
+      "rakazo.harnessSessionComputer": identity.computerBotId,
+      "rakazo.harnessSessionSpace": identity.spaceId,
+      ...(kind === "session"
+        ? {
+            "rakazo.harnessSessionScope": name,
+            "rakazo.harnessSessionBot": identity.botId,
+            ...(family ? { "rakazo.harnessSessionFamily": family } : {}),
+          }
+        : {
+            "rakazo.harnessCredentialScope": name,
+            "rakazo.harnessCredentialUser": identity.userId,
+          }),
+    };
+  }
+
+  private matchesPrivateVolume(
+    actual: Record<string, string> | null | undefined,
+    expected: Record<string, string>,
+    legacySession: boolean,
+  ) {
+    return Object.entries(expected).every(([key, value]) =>
+      // The exact session hash already binds this space. Missing-container bulk cleanup
+      // cannot use legacy labels; exact-scope cleanup independently verifies the digest.
+      legacySession &&
+      ["rakazo.harnessSessionSpace", "rakazo.harnessSessionFamily"].includes(key) &&
+      actual?.[key] === undefined
+        ? true
+        : actual?.[key] === value,
+    );
+  }
+
+  async cleanupNativeState(identity: ProcessIdentity, request: NativeStateCleanupRequest) {
+    if (request.expectedInstallationId !== this.owner)
+      throw new Error("Private native state belongs to a different installation namespace.");
+    if ("sessionScope" in request) return this.cleanupSessionFamily(identity, request.sessionScope);
+    const kind = "credential";
+    const name = credentialVolumeName(this.owner, identity, request.credentialScope);
+    if (this.privateLeases.has(name)) throw new Error("Native private state is still leased.");
+    // Reserve before asynchronous inspection: a fresh launch cannot race deletion.
+    this.privateLeases.set(name, `cleanup-${randomUUID()}`);
+    try {
+      const volume = this.docker.getVolume(name);
+      const info = await volume.inspect().catch((error: unknown) => {
+        if (isMissing(error)) return undefined;
+        throw error;
+      });
+      if (!info) return;
+      if (
+        !this.matchesPrivateVolume(
+          info.Labels,
+          this.privateVolumeLabels(identity, name, kind),
+          false,
+        )
+      )
+        throw new Error("Native private volume ownership mismatch.");
+      // Docker rejects mounted volumes, including leases held by another supervisor.
+      await volume.remove().catch((error: unknown) => {
+        if (!isMissing(error)) throw error;
+      });
+    } finally {
+      this.privateLeases.delete(name);
+    }
+  }
+
+  private async cleanupSessionFamily(
+    identity: ProcessIdentity,
+    scope: NonNullable<ProcessRequest["sessionScope"]>,
+  ) {
+    const family = sessionFamilyName(this.owner, identity, scope);
+    const rootScope = { ...scope, epoch: scope.parentEpoch ?? scope.epoch };
+    const rootName = sessionVolumeName(this.owner, identity, rootScope);
+    if (
+      this.deletingFamilies.has(family) ||
+      [...this.privateLeaseFamilies.values()].includes(family) ||
+      this.privateLeases.has(rootName)
+    )
+      throw new Error("Native session family is still leased.");
+    this.deletingFamilies.add(family);
+    const names = new Set<string>();
+    const reservation = `cleanup-${randomUUID()}`;
+    try {
+      const listed = await this.docker.listVolumes({
+        filters: {
+          label: [
+            `rakazo.harnessSessionOwner=${this.owner}`,
+            `rakazo.harnessSessionFamily=${family}`,
+            `rakazo.harnessSessionComputer=${identity.computerBotId}`,
+            `rakazo.harnessSessionSpace=${identity.spaceId}`,
+          ],
+        },
+      });
+      for (const volume of listed.Volumes ?? []) {
+        if (!/^rakazo-harness-session-[a-f0-9]{64}$/.test(volume.Name)) continue;
+        if (
+          this.matchesPrivateVolume(
+            volume.Labels,
+            this.privateVolumeLabels(identity, volume.Name, "session", family),
+            false,
+          )
+        )
+          names.add(volume.Name);
+      }
+      // Older roots do not have family labels. Exact digest + owner labels remain required.
+      const root = await this.docker
+        .getVolume(rootName)
+        .inspect()
+        .catch((error: unknown) => {
+          if (isMissing(error)) return undefined;
+          throw error;
+        });
+      if (root) {
+        if (
+          !this.matchesPrivateVolume(
+            root.Labels,
+            this.privateVolumeLabels(identity, rootName, "session", family),
+            true,
+          )
+        )
+          throw new Error("Native private volume ownership mismatch.");
+        names.add(rootName);
+      }
+      if ([...names].some((name) => this.privateLeases.has(name)))
+        throw new Error("Native session family is still leased.");
+      for (const name of names) this.privateLeases.set(name, reservation);
+      if (names.size) {
+        // Catch mounted state held by an orphan/other supervisor before erasing any family member.
+        const mounted = await this.docker.listContainers({
+          all: true,
+          filters: { volume: [...names] },
+        });
+        if (mounted.length) throw new Error("Native session family is still mounted.");
+      }
+      for (const name of names) {
+        await this.docker
+          .getVolume(name)
+          .remove()
+          .catch((error: unknown) => {
+            if (!isMissing(error)) throw error;
+          });
+      }
+    } finally {
+      for (const name of names) {
+        if (this.privateLeases.get(name) === reservation) this.privateLeases.delete(name);
+      }
+      this.deletingFamilies.delete(family);
+    }
+  }
+
   async stopComputer(computerId: string) {
     await Promise.all(
       [...this.running.values()]
@@ -517,13 +812,16 @@ export class IsolatedProcessManager {
     );
   }
 
-  async destroyComputer(computerBotId: string) {
-    // A disabled, never-initialized optional runtime must not add Docker requirements to
-    // ordinary computer deletion. A previously initialized runtime still cleans up on rollback.
-    if (!this.ready && process.env.PRIMARY_HARNESSES_ENABLED !== "true") return;
+  async destroyComputer(computerBotId: string, spaceId: string, allowLegacySpace = false) {
+    if (!computerBotId || !spaceId) throw new Error("Missing session cleanup ownership.");
+    // Rollback/restart cannot erase the obligation to remove private transcripts.
+    // This never initializes native runtimes or requires the feature to be enabled.
     await Promise.all(
       [...this.running.values()]
-        .filter((item) => item.identity.computerBotId === computerBotId)
+        .filter(
+          (item) =>
+            item.identity.computerBotId === computerBotId && item.identity.spaceId === spaceId,
+        )
         .map((item) => item.terminate()),
     );
     const result = await this.docker.listVolumes({
@@ -531,12 +829,36 @@ export class IsolatedProcessManager {
         label: [
           `rakazo.harnessSessionOwner=${this.owner}`,
           `rakazo.harnessSessionComputer=${computerBotId}`,
+          ...(allowLegacySpace ? [] : [`rakazo.harnessSessionSpace=${spaceId}`]),
         ],
       },
     });
-    for (const volume of result.Volumes ?? []) {
-      if (this.sessionLeases.has(volume.Name)) throw new Error("Native session is still leased.");
-      await this.docker.getVolume(volume.Name).remove();
+    const volumes = (result.Volumes ?? []).filter((volume) => {
+      const labels = volume.Labels ?? {};
+      return (
+        labels["rakazo.harnessSessionOwner"] === this.owner &&
+        labels["rakazo.harnessSessionComputer"] === computerBotId &&
+        (labels["rakazo.harnessSessionSpace"] === spaceId ||
+          (allowLegacySpace && labels["rakazo.harnessSessionSpace"] === undefined))
+      );
+    });
+    // Check every lease before any removal, including launches not yet in running.
+    if (volumes.some((volume) => this.privateLeases.has(volume.Name)))
+      throw new Error("Native session is still leased.");
+    const cleanupId = `cleanup-${randomUUID()}`;
+    for (const volume of volumes) this.privateLeases.set(volume.Name, cleanupId);
+    try {
+      for (const volume of volumes) {
+        // No force: Docker itself also refuses volumes mounted by an orphan process.
+        await this.docker
+          .getVolume(volume.Name)
+          .remove()
+          .catch((error: unknown) => {
+            if (!isMissing(error)) throw error;
+          });
+      }
+    } finally {
+      for (const volume of volumes) this.privateLeases.delete(volume.Name);
     }
   }
 
@@ -553,6 +875,7 @@ export function isolatedProcessRoutes(
     identity: ProcessIdentity,
     launch: () => ReturnType<IsolatedProcessManager["start"]>,
   ) => ReturnType<IsolatedProcessManager["start"]>,
+  authorizeCleanup?: (identity: ProcessIdentity, cleanup: () => Promise<void>) => Promise<void>,
 ) {
   const routes = new Hono();
   const enabled: MiddlewareHandler = async (c, next) => {
@@ -575,6 +898,18 @@ export function isolatedProcessRoutes(
       throw new Error("Missing runtime identity.");
     return value;
   };
+  routes.delete("/:id/native-state", async (c) => {
+    const parsed = nativeStateCleanupRequest.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: "Invalid private state cleanup scope." }, 400);
+    if (!authorizeCleanup) return c.json({ error: "Private state cleanup is unavailable." }, 503);
+    try {
+      const owner = identity(c.req.param("id"), c.req.raw.headers);
+      await authorizeCleanup(owner, () => manager.cleanupNativeState(owner, parsed.data));
+      return c.json({ ok: true });
+    } catch {
+      return c.json({ error: "Private state cleanup failed or is still leased." }, 503);
+    }
+  });
   routes.post("/:id/processes", async (c) => {
     const parsed = isolatedProcessRequest.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: "Invalid isolated runtime request." }, 400);

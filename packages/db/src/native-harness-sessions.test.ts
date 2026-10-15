@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "./client.js";
+import { resolveExecutionHandover } from "./execution-handover.js";
 import {
   claimNativeHarnessSession,
   updateNativeHarnessSession,
 } from "./native-harness-sessions.js";
+
+vi.mock("./execution-handover.js", () => ({
+  resolveExecutionHandover: vi.fn().mockResolvedValue(null),
+}));
 
 vi.mock("./execution-profiles.js", () => ({
   resolveRunExecutionProfile: vi.fn().mockResolvedValue({
@@ -213,5 +218,51 @@ describe("native session fencing", () => {
         where: expect.objectContaining({ activeRunId: "run", activeLeaseFence: 3 }),
       }),
     );
+  });
+});
+
+describe("execution profile handover", () => {
+  it("rotates a previously used profile when switching back", async () => {
+    vi.mocked(resolveExecutionHandover).mockResolvedValueOnce({
+      previousHarness: "codex",
+      currentHarness: "claude",
+      summary: "handover",
+    });
+    const { db, prisma } = fixture({ lastRunId: "earlier-profile-run" });
+    const session = await claimNativeHarnessSession(prisma, scope);
+    expect(session.epoch).not.toBe("old-epoch");
+    expect(session.nativeSessionId).toBeNull();
+    expect(db.nativeHarnessSession.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ lastRunId: "run" }) }),
+    );
+  });
+  it("retains a switched profile's checkpoint across approval resume", async () => {
+    vi.mocked(resolveExecutionHandover).mockResolvedValueOnce({
+      previousHarness: "codex",
+      currentHarness: "claude",
+      summary: "handover",
+    });
+    const { db, prisma } = fixture({ lastRunId: "run" });
+    const session = await claimNativeHarnessSession(prisma, scope);
+    expect(session.epoch).toBe("old-epoch");
+    expect(session.nativeSessionId).toBe("opaque");
+    expect(db.nativeHarnessSession.updateMany).toHaveBeenCalledTimes(1);
+  });
+  it("does not steal an active session during a profile switch", async () => {
+    vi.mocked(resolveExecutionHandover).mockResolvedValueOnce({
+      previousHarness: "codex",
+      currentHarness: "claude",
+      summary: "handover",
+    });
+    const { db, prisma } = fixture({
+      lastRunId: "other",
+      activeRunId: "other",
+      activeLeaseFence: 2,
+    });
+    db.run.findFirst
+      .mockResolvedValueOnce({ id: "run", ...scope })
+      .mockResolvedValueOnce({ status: "running" });
+    await expect(claimNativeHarnessSession(prisma, scope)).rejects.toThrow("still active");
+    expect(db.nativeHarnessSession.updateMany).not.toHaveBeenCalled();
   });
 });

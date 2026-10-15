@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type {
   AdapterContext,
@@ -12,6 +13,7 @@ import type {
   PageBrowserResult,
   PortableFile,
   ProcessEvent,
+  SandboxNativeStateCleanupRequest,
   SandboxProcessHandle,
   SandboxProcessRequest,
   SandboxProvider,
@@ -228,6 +230,41 @@ export class DockerSandboxProvider implements SandboxProvider {
     if (body.stdout) yield { type: "stdout", data: body.stdout };
     if (body.stderr) yield { type: "stderr", data: body.stderr };
     yield { type: "exit", code: body.code };
+  }
+
+  nativeStateInstallationId(): string {
+    return createHash("sha256").update(this.supervisorToken).digest("hex").slice(0, 32);
+  }
+
+  async cleanupNativeState(
+    computer: ComputerRef,
+    request: SandboxNativeStateCleanupRequest,
+    context: AdapterContext,
+  ): Promise<void> {
+    if (computer.kind !== "docker")
+      throw new Error("Private native state requires a Docker computer.");
+    if (request.expectedInstallationId !== this.nativeStateInstallationId())
+      throw new Error("Private native state belongs to a different installation namespace.");
+    if (!context.botId || !context.runId) throw new Error("Missing isolated runtime identity.");
+    context.signal.throwIfAborted();
+    const response = await fetch(
+      this.url(`/computers/${encodeURIComponent(computer.id)}/native-state`),
+      {
+        method: "DELETE",
+        headers: {
+          ...this.headers(context, computer.botId),
+          "content-type": "application/json",
+          "x-rakazo-runtime-bot-id": context.botId,
+          "x-rakazo-runtime-user-id": context.userId,
+          "x-rakazo-run-id": context.runId,
+        },
+        body: JSON.stringify(request),
+        signal: AbortSignal.any([context.signal, AbortSignal.timeout(30_000)]),
+        redirect: "error",
+      },
+    );
+    cancelResponseBody(response);
+    if (!response.ok) throw new Error(`Private native state cleanup failed (${response.status}).`);
   }
 
   async startProcess(

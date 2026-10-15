@@ -6,11 +6,18 @@ import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), credentials: vi.fn(), create: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  list: vi.fn(),
+  credentials: vi.fn(),
+  create: vi.fn(),
+  models: vi.fn(),
+  nativeLogins: vi.fn(),
+}));
 vi.mock("../../lib/rpc", () => ({
   rpc: {
-    executionProfiles: { list: mocks.list, create: mocks.create },
+    executionProfiles: { list: mocks.list, create: mocks.create, models: mocks.models },
     models: { credentials: mocks.credentials },
+    nativeLogins: { list: mocks.nativeLogins },
   },
 }));
 vi.mock("@lingui/react/macro", () => ({
@@ -60,6 +67,8 @@ const profile: ExecutionProfile = {
   credentialId: "account-b",
   endpoint: "https://api.example.test",
   modelId: "test-model",
+  authScheme: "api-key",
+  modelRoles: {},
   inputModalities: [],
   computerId: null,
   createdAt: "2026-10-01T00:00:00.000Z",
@@ -99,6 +108,8 @@ beforeEach(() => {
   mocks.list.mockResolvedValue([profile]);
   mocks.credentials.mockResolvedValue(accounts);
   mocks.create.mockResolvedValue(profile);
+  mocks.models.mockResolvedValue([]);
+  mocks.nativeLogins.mockResolvedValue({ enabled: false, accounts: [], computers: [] });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -208,6 +219,8 @@ describe("execution profile settings", () => {
       expect.objectContaining({
         supersedesId: legacy.id,
         runtimeVersion: "2.2.0",
+        authScheme: "api-key",
+        modelRoles: {},
         inputModalities: [],
       }),
     );
@@ -251,6 +264,8 @@ describe("execution profile settings", () => {
       protocol: "anthropic",
       endpoint: "https://api.example.test",
       modelId: "test-model",
+      authScheme: "api-key",
+      modelRoles: {},
       inputModalities: [],
       computerId: null,
     });
@@ -341,4 +356,205 @@ describe("execution profile settings", () => {
     await act(async () => finish(profile));
     expect(onChange).not.toHaveBeenCalled();
   });
+});
+
+it("revises a current profile without losing its account, environment or model declarations", async () => {
+  const pinned = {
+    ...profile,
+    computerId: "computer-review",
+    inputModalities: ["image"] as const,
+    authScheme: "bearer" as const,
+    modelRoles: { sonnet: "review-model" },
+  };
+  mocks.list.mockResolvedValue([pinned]);
+  await render(profile.id);
+  await click("New revision");
+  await change("name", "Review updated");
+  await click("Create profile");
+  expect(mocks.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      supersedesId: profile.id,
+      name: "Review updated",
+      credentialId: "account-b",
+      computerId: "computer-review",
+      inputModalities: ["image"],
+      authScheme: "bearer",
+      modelRoles: { sonnet: "review-model" },
+    }),
+  );
+  expect(container.textContent).not.toContain("Unsupported runtime version");
+});
+it("derives Pi protocol from the selected catalog model and accepts an exact OAuth account", async () => {
+  mocks.credentials.mockResolvedValue([
+    { ...accounts[2], id: "oauth-account", authKind: "oauth", modelId: "responses-model" },
+  ]);
+  mocks.models.mockResolvedValue([
+    {
+      id: "responses-model",
+      label: "Responses model",
+      protocol: "openai-responses",
+      inputModalities: ["image"],
+    },
+    {
+      id: "chat-model",
+      label: "Chat model",
+      protocol: "openai-chat-completions",
+      inputModalities: [],
+    },
+  ]);
+  await render();
+  await click("New profile");
+  await change("name", "Pi project");
+  await change("harness", "pi");
+  await change("provider", "openai");
+  await change("account", "oauth-account");
+  expect(mocks.models).toHaveBeenCalledWith({ harness: "pi", credentialId: "oauth-account" });
+  expect(field<HTMLSelectElement>("protocol").value).toBe("openai-responses");
+  expect(field<HTMLSelectElement>("protocol").disabled).toBe(true);
+  expect(container.querySelector('[id$="-endpoint"]')).toBeNull();
+  await change("model-choice", "chat-model");
+  await click("Create profile");
+  expect(mocks.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      harness: "pi",
+      credentialId: "oauth-account",
+      modelId: "chat-model",
+      protocol: "openai-chat-completions",
+      endpoint: null,
+    }),
+  );
+});
+it("blocks unsupported Pi account protocols before creating a profile", async () => {
+  await render();
+  await click("New profile");
+  await change("name", "Unsupported");
+  await change("harness", "pi");
+  await change("provider", "anthropic");
+  await change("account", "account-b");
+  expect(container.textContent).toContain(
+    "This account’s protocol is not supported by execution profiles.",
+  );
+  expect(button("Create profile").disabled).toBe(true);
+});
+it("uses compatible Pi chat-completions for an explicitly entered model", async () => {
+  mocks.credentials.mockResolvedValue([
+    {
+      ...accounts[2],
+      provider: "openai-compatible",
+      baseUrl: "https://gateway.example.test/v1",
+      modelId: "saved-model",
+    },
+  ]);
+  mocks.models.mockResolvedValue([
+    {
+      id: "saved-model",
+      label: "Saved model",
+      protocol: "openai-chat-completions",
+      inputModalities: [],
+    },
+  ]);
+  await render();
+  await click("New profile");
+  await change("name", "Pi compatible");
+  await change("harness", "pi");
+  await change("provider", "openai-compatible");
+  await change("account", "account-c");
+  await change("model-choice", "");
+  await change("model", "custom-model");
+  await click("Create profile");
+  expect(mocks.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      protocol: "openai-chat-completions",
+      modelId: "custom-model",
+      endpoint: "https://gateway.example.test/v1",
+    }),
+  );
+});
+it("ignores a stale model catalog after switching account", async () => {
+  let finish!: (value: unknown[]) => void;
+  mocks.models
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    )
+    .mockResolvedValueOnce([
+      { id: "other", label: "Other", protocol: "anthropic", inputModalities: [] },
+    ]);
+  await render();
+  await fill();
+  await change("account", "account-a");
+  await act(async () =>
+    finish([{ id: "stale", label: "Stale", protocol: "anthropic", inputModalities: ["image"] }]),
+  );
+  expect(field<HTMLSelectElement>("model-choice").textContent).not.toContain("Stale");
+  expect(field<HTMLSelectElement>("model-choice").textContent).toContain("Other");
+});
+it("pins a signed-in account to its official endpoint and computer without API credentials", async () => {
+  mocks.nativeLogins.mockResolvedValue({
+    enabled: true,
+    accounts: [
+      {
+        credentialId: "signed-in",
+        label: "Personal Codex",
+        harness: "codex",
+        endpoint: "https://chatgpt.com/backend-api/codex",
+        computerId: "computer-login",
+        state: { state: "ready", accountLabel: null, plan: null },
+      },
+    ],
+    computers: [{ id: "computer-login", scope: "team", botName: null }],
+  });
+  await render();
+  await click("New profile");
+  await change("name", "Personal review");
+  await change("harness", "codex");
+  await change("provider", "native-codex");
+  await change("account", "signed-in");
+  await change("model", "gpt-test");
+  expect(field<HTMLInputElement>("endpoint").readOnly).toBe(true);
+  expect(field<HTMLSelectElement>("environment").disabled).toBe(true);
+  expect(field<HTMLSelectElement>("environment").value).toBe("computer-login");
+  expect(container.querySelector('[aria-label="Model accepts uploaded audio"]')).toBeNull();
+  await click("Create profile");
+  expect(mocks.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      credentialId: "signed-in",
+      provider: "native-codex",
+      computerId: "computer-login",
+      endpoint: "https://chatgpt.com/backend-api/codex",
+    }),
+  );
+});
+it("offers only the signed-in account’s matching harness and a ready state", async () => {
+  mocks.nativeLogins.mockResolvedValue({
+    enabled: true,
+    accounts: [
+      {
+        credentialId: "signed-in",
+        label: "Personal Codex",
+        harness: "codex",
+        endpoint: "https://chatgpt.com/backend-api/codex",
+        computerId: "computer-login",
+        state: { state: "ready", accountLabel: null, plan: null },
+      },
+    ],
+    computers: [],
+  });
+  await render();
+  await click("New profile");
+  expect(field<HTMLSelectElement>("provider").textContent).not.toContain("native-codex");
+  await change("harness", "pi");
+  expect(field<HTMLSelectElement>("provider").textContent).not.toContain("native-codex");
+});
+
+it("keeps signed-in profile limitations visible when its account is unavailable", async () => {
+  const signed = { ...profile, provider: "native-kimi", harness: "kimi" as const };
+  mocks.list.mockResolvedValue([signed]);
+  await render(signed.id);
+  expect(container.textContent).toContain(
+    "Delegated agents are unavailable for signed-in accounts.",
+  );
+  expect(container.textContent).toContain("Group handoffs remain available.");
+  expect(container.textContent).toContain("Personal interactive chats only.");
 });

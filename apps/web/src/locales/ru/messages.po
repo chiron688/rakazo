@@ -225,7 +225,9 @@ msgstr "Токен доступа"
 msgid "Access token (optional)"
 msgstr "Токен доступа (необязательно)"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/AccountSettingsOverlay.tsx
+#: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Account"
 msgstr "Аккаунт"
@@ -242,6 +244,11 @@ msgstr "ID аккаунта"
 #: src/pages/PluginsOverlay.tsx
 msgid "Account label"
 msgstr "Ярлык аккаунта"
+
+#: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
+msgid "Account name"
+msgstr "Название аккаунта"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Accounts"
@@ -307,6 +314,10 @@ msgstr "Добавьте имя сервера."
 msgid "Add a stdio command."
 msgstr "Добавьте команду stdio."
 
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Add account…"
+msgstr "Добавить аккаунт…"
+
 #: src/pages/McpServersOverlay.tsx
 msgid "Add an HTTPS server URL."
 msgstr "Добавьте URL-адрес HTTPS-сервера."
@@ -364,6 +375,10 @@ msgstr "Добавить сервер"
 msgid "Add server URL"
 msgstr "Добавьте URL сервера"
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Add signed-in account"
+msgstr "Добавить аккаунт через вход"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Add to routine"
 msgstr "Добавить в задачу"
@@ -393,6 +408,7 @@ msgstr "Добавление…"
 #: src/pages/RoutineEditor.tsx
 #: src/pages/RoutineSchedule.tsx
 #: src/pages/shell/bot-panel.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Advanced"
 msgstr "Расширенные"
 
@@ -483,6 +499,10 @@ msgstr "Всегда разрешено"
 msgid "An API key is stored for this provider, not a subscription sign-in."
 msgstr "Для этого поставщика сохранен API-ключ, а не вход по подписке."
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "An available Linux Docker computer is required."
+msgstr "Нужен доступный компьютер Linux Docker."
+
 #: src/components/AskCard.tsx
 msgid "Answer"
 msgstr "Ответ"
@@ -513,6 +533,7 @@ msgstr "API вернулся, но обновление не завершило�
 #: src/lib/localized-provider-hint.ts
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "API key"
 msgstr "API-ключ"
@@ -624,6 +645,10 @@ msgstr "Вложение"
 msgid "Authentication failed."
 msgstr "Аутентификация не удалась."
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Authentication header"
+msgstr "Заголовок авторизации"
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 msgid "Authorization code or callback URL"
@@ -703,6 +728,7 @@ msgstr ""
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Bearer token"
 msgstr "Bearer-токен"
 
@@ -803,6 +829,7 @@ msgstr "Не удаётся связаться с сервером."
 #: src/pages/Artifacts.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
@@ -822,6 +849,10 @@ msgstr "Отменить создание группы"
 #: src/pages/shell/chat-context.tsx
 msgid "Cancel reply"
 msgstr "Отменить ответ"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Cancel sign-in"
+msgstr "Отменить вход"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Canceled"
@@ -933,9 +964,17 @@ msgstr "Выберите новый пароль"
 msgid "Choose account"
 msgstr "Выберите аккаунт"
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Choose computer"
+msgstr "Выбрать компьютер"
+
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Choose file"
 msgstr "Выбрать файл"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Choose model"
+msgstr "Выбрать модель"
 
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Choose provider"
@@ -1096,6 +1135,7 @@ msgstr ""
 msgid "Complete"
 msgstr "Завершить"
 
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/Shell.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -1172,8 +1212,8 @@ msgid "Connect a provider to add backups."
 msgstr "Подключите провайдера, чтобы добавить резервные модели."
 
 #: src/pages/shell/execution-profile-settings.tsx
-msgid "Connect an API account in Models first."
-msgstr "Сначала подключите API-аккаунт в разделе «Модели»."
+msgid "Connect an account in Models first."
+msgstr "Сначала подключите аккаунт в разделе «Модели»."
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Connect API key"
@@ -1203,6 +1243,7 @@ msgstr "Подключить Treg"
 #: src/pages/McpOAuthCallback.tsx
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/shell/message-cards.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Connected"
@@ -1308,6 +1349,10 @@ msgstr "Не удалось изменить пароль"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Could not change the default model"
 msgstr "Не удалось изменить модель по умолчанию."
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not check sign-in. Try reconnecting."
+msgstr "Не удалось проверить вход. Подключите аккаунт заново."
 
 #: src/lib/model-connection-preflight.ts
 msgid "Could not check stored credentials."
@@ -1416,6 +1461,10 @@ msgstr "Не удалось удалить пространство"
 msgid "Could not delete this artifact."
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not disconnect account"
+msgstr "Не удалось отключить аккаунт"
+
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "Could not disconnect memory provider"
 msgstr "Не удалось отключить поставщика памяти."
@@ -1515,6 +1564,10 @@ msgstr "Не удалось загрузить серверы MCP."
 msgid "Could not load model settings"
 msgstr "Не удалось загрузить настройки модели."
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Could not load models"
+msgstr "Не удалось загрузить модели"
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Could not load run history"
 msgstr "Не удалось загрузить историю запусков"
@@ -1523,6 +1576,10 @@ msgstr "Не удалось загрузить историю запусков"
 #: src/pages/Auth.tsx
 msgid "Could not load sign-in options"
 msgstr "Не удалось загрузить способы входа"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not load signed-in accounts"
+msgstr "Не удалось загрузить аккаунты со входом"
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not load skill"
@@ -1595,6 +1652,10 @@ msgstr "Не удалось удалить правило"
 #: src/pages/shell/bot-credentials.tsx
 msgid "Could not remove the credential"
 msgstr ""
+
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Could not rename account"
+msgstr "Не удалось переименовать аккаунт"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not rename connection"
@@ -1693,6 +1754,10 @@ msgstr "Не удалось отправить это"
 #: src/pages/McpServersOverlay.tsx
 msgid "Could not start OAuth"
 msgstr "Не удалось запустить OAuth"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not start sign-in"
+msgstr "Не удалось начать вход"
 
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Could not start teaching"
@@ -1893,6 +1958,10 @@ msgstr "По умолчанию ({0})"
 msgid "Default scope"
 msgstr "Область действия по умолчанию"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Delegated agents are unavailable for signed-in accounts."
+msgstr "Для аккаунтов со входом делегирование агентам недоступно."
+
 #: src/pages/Artifacts.tsx
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
@@ -1991,6 +2060,7 @@ msgstr ""
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Disconnect"
 msgstr "Отключить"
@@ -1998,6 +2068,10 @@ msgstr "Отключить"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Disconnect {disconnectName}?"
 msgstr ""
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Disconnect {logoutName}?"
+msgstr "Отключить {logoutName}?"
 
 #. placeholder {0}: selected.providerName ?? selected.provider
 #: src/pages/ModelSettingsOverlay.tsx
@@ -2165,10 +2239,6 @@ msgstr "Введите API-ключ перед тестом."
 msgid "Environment"
 msgstr "Среда"
 
-#: src/pages/shell/execution-profile-settings.tsx
-msgid "Environment: Bot computer"
-msgstr "Среда: компьютер бота"
-
 #: src/lib/roster-status.ts
 #: src/pages/Shell.tsx
 msgid "Error"
@@ -2207,6 +2277,7 @@ msgstr "Каждый месяц"
 msgid "Every week"
 msgstr "Каждую неделю"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Execution profile"
 msgstr "Профиль выполнения"
@@ -2305,6 +2376,10 @@ msgstr "Поиск…"
 msgid "Finish signing in at <0>{0}</0>. The final page may not load; paste its URL or code here."
 msgstr "Завершите вход на странице <0>{0}</0>. Если последняя страница не загрузится, вставьте сюда её URL или код."
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Finish signing in in your browser:"
+msgstr "Завершите вход в браузере:"
+
 #: src/lib/model-connection-preflight.ts
 msgid "Finish subscription sign-in, then test again."
 msgstr "Завершите вход по подписке и повторите тест."
@@ -2372,10 +2447,18 @@ msgstr "Подготовка"
 msgid "Git event"
 msgstr "Git-событие"
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Global"
+msgstr "Международный"
+
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/Shell.tsx
 msgid "Group"
 msgstr "Группа"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Group handoffs remain available."
+msgstr "Передача в группах остаётся доступной."
 
 #: src/pages/GroupPanel.tsx
 msgid "Group settings"
@@ -2401,6 +2484,8 @@ msgstr "Сначала повесьте трубку, затем введите 
 msgid "Hang up, then enter the code on screen."
 msgstr "Повесьте трубку, затем введите код на экране."
 
+#: src/components/RunExecutionProfileDetails.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Harness"
 msgstr "Движок выполнения"
@@ -2732,6 +2817,10 @@ msgstr ""
 msgid "Lowercase letters, numbers, hyphens and underscores, starting with a letter."
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Mainland China"
+msgstr "Материковый Китай"
+
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Make sure nothing is still running on this computer."
 msgstr ""
@@ -2912,6 +3001,7 @@ msgstr "минута"
 msgid "minutes"
 msgstr "минуты"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/RoutineEditor.tsx
@@ -2932,8 +3022,13 @@ msgstr "Модель принимает изображения"
 msgid "Model accepts uploaded audio"
 msgstr "Модель принимает загруженное аудио"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Model for {role}"
+msgstr "Модель для {role}"
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Model id"
 msgstr "Идентификатор модели"
 
@@ -3025,6 +3120,10 @@ msgstr "Назовите эту группу"
 #: src/pages/RoutineEditor.tsx
 msgid "Name this routine"
 msgstr "Назовите эту задачу"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Native sign-in"
+msgstr "Вход через среду агента"
 
 #: src/lib/roster-status.ts
 msgid "Needs an answer"
@@ -3385,6 +3484,7 @@ msgstr "Исходное сообщение недоступно"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Other model…"
 msgstr "Другая модель…"
 
@@ -3446,6 +3546,11 @@ msgstr "Вставьте API-ключ и повторите тест."
 msgid "Paused"
 msgstr "Приостановлено"
 
+#: src/pages/NativeLoginSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Personal interactive chats only."
+msgstr "Только личные интерактивные чаты."
+
 #: src/pages/Shell.tsx
 #: src/pages/shell/chat-context.tsx
 msgid "Photo"
@@ -3500,6 +3605,11 @@ msgstr ""
 msgid "Private"
 msgstr "Личный"
 
+#: src/pages/NativeLoginSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Private computer"
+msgstr "Личный компьютер"
+
 #: src/pages/shell/dialogs.tsx
 msgid "Private workspace with its own bots and groups."
 msgstr "Приватное пространство со своими ботами и группами."
@@ -3520,6 +3630,7 @@ msgstr ""
 msgid "Protocol"
 msgstr "Протокол"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/shell/execution-profile-settings.tsx
@@ -3571,6 +3682,10 @@ msgstr ""
 #: src/pages/ActivityList.tsx
 msgid "Recent"
 msgstr "Недавние"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Reconnect"
+msgstr "Подключить заново"
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Reconnect OAuth"
@@ -3651,6 +3766,10 @@ msgstr "Обновить экран"
 msgid "Refreshing…"
 msgstr "Обновление…"
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Region"
+msgstr "Регион"
+
 #: src/lib/user-error.ts
 msgid "Registration is closed"
 msgstr "Регистрация закрыта"
@@ -3722,9 +3841,17 @@ msgstr "Удалено вместе с чатом, компьютером и п�
 msgid "Removed, but list refresh failed"
 msgstr "Удалено, но обновить список не удалось."
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Removes this sign-in from Rakazo. Provider sessions may remain active."
+msgstr "Удаляет этот вход из Rakazo. Сеансы у провайдера могут остаться активными."
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Removing…"
 msgstr "Удаление…"
+
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Rename"
+msgstr "Переименовать"
 
 #: src/pages/BotContextMenu.tsx
 #: src/pages/Shell.tsx
@@ -3893,6 +4020,10 @@ msgstr ""
 msgid "Run at"
 msgstr "Запустить в"
 
+#: src/components/RunExecutionProfileDetails.tsx
+msgid "Run details"
+msgstr "Сведения о запуске"
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Run history"
 msgstr "История запуска"
@@ -3944,10 +4075,6 @@ msgstr "Сохранить резервные модели"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Save credential"
-msgstr ""
-
-#: src/pages/ModelSettingsOverlay.tsx
-msgid "Save limits"
 msgstr ""
 
 #: src/pages/shell/bot-credentials.tsx
@@ -4199,6 +4326,7 @@ msgstr ""
 #: src/lib/localized-provider-hint.ts
 #: src/pages/Auth.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/Welcome.tsx
 msgid "Sign in"
@@ -4226,6 +4354,22 @@ msgstr "Войдите по подписке или протестируйте A
 #: src/pages/Welcome.tsx
 msgid "Sign up"
 msgstr "Зарегистрироваться"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Sign-in did not complete"
+msgstr "Вход не завершён"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Sign-in expired"
+msgstr "Срок входа истёк"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Sign-in page unavailable"
+msgstr "Страница входа недоступна"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Signed out"
+msgstr "Сеанс завершён"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Site"
@@ -4419,6 +4563,11 @@ msgstr "Обучение в процессе. Прекратите обучен�
 msgid "Team"
 msgstr "Команда"
 
+#: src/pages/NativeLoginSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Team computer"
+msgstr "Компьютер команды"
+
 #: src/pages/Shell.tsx
 msgid "Team Computer"
 msgstr "Командный компьютер"
@@ -4490,6 +4639,10 @@ msgstr "рассуждение"
 msgid "Thinking: {activeThinkingLabel}"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "This account’s protocol is not supported by execution profiles."
+msgstr "Протокол этого аккаунта не поддерживается профилями выполнения."
+
 #: src/pages/Shell.tsx
 msgid "This bot runs on this computer, not a Linux desktop. Shell and files use your home folder."
 msgstr "Этот бот работает на этом компьютере, а не на рабочем столе Linux. Оболочка и файлы используют вашу домашнюю папку."
@@ -4518,6 +4671,10 @@ msgstr ""
 #: src/components/ArtifactFileCard.tsx
 msgid "This file is not valid UTF-8 text."
 msgstr ""
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "This is my personal, self-hosted deployment."
+msgstr "Это моя личная установка на собственном сервере."
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "this Mac"
@@ -4828,6 +4985,10 @@ msgstr ""
 #: src/pages/shell/bot-credentials.tsx
 msgid "Values are encrypted and never shown again."
 msgstr "Значения зашифрованы и больше не отображаются."
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Verification code"
+msgstr "Код подтверждения"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Verify and add"

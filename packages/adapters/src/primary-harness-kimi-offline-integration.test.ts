@@ -403,7 +403,14 @@ describe.skipIf(!modules)("pinned Kimi native offline integration", () => {
       await rm(root, { recursive: true, force: true });
     }
   }, 60_000);
-  it.each(["provider-failure", "disabled-tool", "missing-usage", "media-stripped"] as const)(
+  it.each([
+    "provider-failure",
+    "authentication",
+    "quota",
+    "disabled-tool",
+    "missing-usage",
+    "media-stripped",
+  ] as const)(
     "handles actual native %s without unexpected host effects",
     async (scenario) => {
       const root = await mkdtemp(join(tmpdir(), "rakazo-kimi-negative-"));
@@ -415,8 +422,14 @@ describe.skipIf(!modules)("pinned Kimi native offline integration", () => {
       const server = createServer((incoming, response) => {
         incoming.resume();
         calls++;
-        if (scenario === "provider-failure" || (scenario === "media-stripped" && calls === 1)) {
-          response.writeHead(400, { "Content-Type": "application/json" });
+        if (
+          ["provider-failure", "authentication", "quota"].includes(scenario) ||
+          (scenario === "media-stripped" && calls === 1)
+        ) {
+          response.writeHead(
+            scenario === "authentication" ? 401 : scenario === "quota" ? 429 : 400,
+            { "Content-Type": "application/json", "retry-after": "0" },
+          );
           response.end(
             JSON.stringify({
               error: {
@@ -424,7 +437,12 @@ describe.skipIf(!modules)("pinned Kimi native offline integration", () => {
                   scenario === "media-stripped"
                     ? "Invalid image format"
                     : "deterministic provider failure",
-                type: "invalid_request_error",
+                type:
+                  scenario === "authentication"
+                    ? "authentication_error"
+                    : scenario === "quota"
+                      ? "rate_limit_error"
+                      : "invalid_request_error",
               },
             }),
           );
@@ -540,11 +558,15 @@ describe.skipIf(!modules)("pinned Kimi native offline integration", () => {
           ]);
         } else
           await expect(running).rejects.toThrow(
-            scenario === "provider-failure"
-              ? /complete successfully/
-              : scenario === "disabled-tool"
-                ? /disabled native tool/
-                : /Kimi attempted to remove attached media after a provider error; the run was stopped/,
+            scenario === "authentication"
+              ? /could not authenticate.*Reconnect/
+              : scenario === "quota"
+                ? /usage or rate limit.*quota/
+                : scenario === "provider-failure"
+                  ? /complete successfully/
+                  : scenario === "disabled-tool"
+                    ? /disabled native tool/
+                    : /Kimi attempted to remove attached media after a provider error; the run was stopped/,
           );
         expect(callTool).not.toHaveBeenCalled();
         expect(calls).toBeGreaterThan(0);

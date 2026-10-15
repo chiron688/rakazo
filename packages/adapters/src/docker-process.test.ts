@@ -175,3 +175,89 @@ describe("Docker bidirectional isolated runtime transport", () => {
     await process.terminate();
   });
 });
+
+describe("Docker private state cleanup transport", () => {
+  const credentialScope = {
+    harness: "codex" as const,
+    connectionId: "connection",
+    epoch: "obsolete",
+  };
+  it("sends only the exact scope and server-bound ownership with a finite independent deadline", async () => {
+    const fetcher = vi.fn(async (_url: unknown, _init?: RequestInit) =>
+      Response.json({ ok: true }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const provider = new DockerSandboxProvider("http://supervisor.test", "fake-token");
+    await provider.cleanupNativeState(
+      computer,
+      { expectedInstallationId: provider.nativeStateInstallationId(), credentialScope },
+      context,
+    );
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(
+      "http://supervisor.test/computers/computer/native-state",
+      expect.objectContaining({
+        method: "DELETE",
+        redirect: "error",
+        signal: expect.any(AbortSignal),
+        headers: expect.objectContaining({
+          "x-rakazo-bot-id": "team",
+          "x-rakazo-runtime-bot-id": "bot",
+          "x-rakazo-runtime-user-id": "user",
+          "x-rakazo-space-id": "space",
+          "x-rakazo-run-id": "run",
+        }),
+        body: JSON.stringify({
+          expectedInstallationId: provider.nativeStateInstallationId(),
+          credentialScope,
+        }),
+      }),
+    );
+  });
+  it("rejects prior installation state without sending a false-success deletion", async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const previous = new DockerSandboxProvider("http://supervisor.test", "old-fake-token");
+    const current = new DockerSandboxProvider("http://supervisor.test", "new-fake-token");
+    expect(current.nativeStateInstallationId()).toMatch(/^[a-f0-9]{32}$/);
+    expect(current.nativeStateInstallationId()).not.toBe(previous.nativeStateInstallationId());
+    await expect(
+      current.cleanupNativeState(
+        computer,
+        {
+          expectedInstallationId: previous.nativeStateInstallationId(),
+          credentialScope,
+        },
+        context,
+      ),
+    ).rejects.toThrow(/different installation/);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("does not treat a cleanup conflict or unsupported host as successful erasure", async () => {
+    const fetcher = vi.fn(async () => Response.json({ error: "leased" }, { status: 503 }));
+    vi.stubGlobal("fetch", fetcher);
+    const provider = new DockerSandboxProvider("http://supervisor.test", "fake-token");
+    await expect(
+      provider.cleanupNativeState(
+        computer,
+        { expectedInstallationId: provider.nativeStateInstallationId(), credentialScope },
+        context,
+      ),
+    ).rejects.toThrow(/cleanup failed/);
+    await expect(
+      provider.cleanupNativeState(
+        { ...computer, kind: "desktop" },
+        { expectedInstallationId: provider.nativeStateInstallationId(), credentialScope },
+        context,
+      ),
+    ).rejects.toThrow(/Docker/);
+    await expect(
+      provider.cleanupNativeState(
+        computer,
+        { expectedInstallationId: provider.nativeStateInstallationId(), credentialScope },
+        { ...context, botId: undefined },
+      ),
+    ).rejects.toThrow(/identity/);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+});

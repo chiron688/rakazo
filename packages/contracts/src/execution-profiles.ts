@@ -7,6 +7,29 @@ export const ExecutionProtocolSchema = z.enum([
   "openai-responses",
   "openai-chat-completions",
 ]);
+export const ExecutionAuthSchemeSchema = z.enum(["api-key", "bearer"]);
+const RoleModelId = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .refine(
+    (value) =>
+      [...value].every(
+        (character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127,
+      ),
+    "Model IDs cannot contain control characters",
+  );
+export const ExecutionModelRolesSchema = z
+  .object({
+    haiku: RoleModelId.optional(),
+    sonnet: RoleModelId.optional(),
+    opus: RoleModelId.optional(),
+    fable: RoleModelId.optional(),
+    subagent: RoleModelId.optional(),
+  })
+  .strict();
+export type ExecutionModelRoles = z.infer<typeof ExecutionModelRolesSchema>;
 
 export const NATIVE_EXECUTION_CAPABILITIES = {
   delegatedAgents: true,
@@ -75,6 +98,13 @@ export function executionProfileMediaCapabilities(
   };
 }
 
+export const EXECUTION_HARNESS_LABELS = {
+  pi: "Pi",
+  claude: "Claude Agent",
+  codex: "Codex",
+  kimi: "Kimi Code",
+} as const;
+
 export const EXECUTION_HARNESS_PROTOCOLS = {
   pi: ["anthropic", "openai-responses", "openai-chat-completions"],
   claude: ["anthropic"],
@@ -105,6 +135,8 @@ const profileConfiguration = {
   provider: z.string().trim().min(1).max(80),
   credentialId: Id,
   protocol: ExecutionProtocolSchema,
+  authScheme: ExecutionAuthSchemeSchema.default("api-key"),
+  modelRoles: ExecutionModelRolesSchema.default({}),
   endpoint: ExecutionEndpointSchema.nullable(),
   modelId: z.string().trim().min(1).max(200),
   inputModalities: ExecutionInputModalitiesSchema,
@@ -122,6 +154,14 @@ export const ExecutionProfileSchema = z.object({
 });
 export type ExecutionProfile = z.infer<typeof ExecutionProfileSchema>;
 
+export const ExecutionProfileModelSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  protocol: ExecutionProtocolSchema,
+  inputModalities: z.array(ExecutionInputModalitySchema),
+});
+export type ExecutionProfileModel = z.infer<typeof ExecutionProfileModelSchema>;
+
 export const CreateExecutionProfileInput = z
   .object({
     ...profileConfiguration,
@@ -130,6 +170,16 @@ export const CreateExecutionProfileInput = z
     supersedesId: Id.optional(),
   })
   .superRefine((value, ctx) => {
+    if (
+      value.harness !== "claude" &&
+      (value.authScheme !== "api-key" || Object.keys(value.modelRoles).length > 0)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["authScheme"],
+        message: "Bearer authentication and model role mappings require Claude Agent.",
+      });
+    }
     if (value.harness !== "pi" && !value.endpoint) {
       ctx.addIssue({
         code: "custom",
@@ -178,6 +228,8 @@ export const ExecutionProfileSnapshotSchema = z.object({
   credentialId: Id,
   credentialSecretId: Id,
   protocol: ExecutionProtocolSchema,
+  authScheme: ExecutionAuthSchemeSchema.default("api-key"),
+  modelRoles: ExecutionModelRolesSchema.default({}),
   endpoint: ExecutionEndpointSchema.nullable(),
   modelId: z.string().min(1),
   inputModalities: ExecutionInputModalitiesSchema,

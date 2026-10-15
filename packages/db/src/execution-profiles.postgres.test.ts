@@ -87,6 +87,7 @@ describePostgres("execution profile migration (PostgreSQL)", () => {
     await prisma.bot.deleteMany({ where: { id: botId } });
     await prisma.organization.deleteMany({ where: { id: organizationId } });
     await prisma.user.deleteMany({ where: { id: userId } });
+    await prisma.nativeStateCleanup.deleteMany({ where: { spaceId, userId } });
     await close();
   });
 
@@ -103,6 +104,131 @@ describePostgres("execution profile migration (PostgreSQL)", () => {
       },
     });
 
+  it("retires only the selected account when sibling credentials share a secret", async () => {
+    const sharedSecretId = `shared-secret-${suffix}`;
+    const rotatedSecretId = `rotated-secret-${suffix}`;
+    await prisma.secret.createMany({
+      data: [sharedSecretId, rotatedSecretId].map((id) => ({
+        id,
+        userId,
+        kind: "model",
+        ciphertext: "fake-shared-secret",
+      })),
+    });
+    const accounts = await Promise.all(
+      ["selected", "sibling"].map((name) =>
+        prisma.userModelCredential.create({
+          data: {
+            id: `${name}-account-${suffix}`,
+            userId,
+            provider: "anthropic",
+            label: name,
+            secretId: sharedSecretId,
+          },
+        }),
+      ),
+    );
+    const profiles = await Promise.all(
+      accounts.map((account) =>
+        createExecutionProfile(
+          prisma,
+          { spaceId, userId },
+          {
+            name: account.label,
+            harness: "claude",
+            provider: "anthropic",
+            credentialId: account.id,
+            protocol: "anthropic",
+            authScheme: "api-key",
+            modelRoles: {},
+            endpoint: "https://api.example.test",
+            modelId: "offline-model",
+            inputModalities: [],
+            runtimeVersion: "0.3.300",
+            computerId: null,
+          },
+        ),
+      ),
+    );
+    async function sessionFor(index: number) {
+      const profile = profiles[index]!;
+      await prisma.bot.update({ where: { id: botId }, data: { executionProfileId: profile.id } });
+      const run = await createRun("message");
+      const scope = {
+        spaceId,
+        userId,
+        botId,
+        threadId,
+        profileId: profile.id,
+        runId: run.id,
+        leaseFence: run.leaseFence,
+      };
+      const session = await claimNativeHarnessSession(prisma, scope);
+      await prisma.nativeHarnessSession.update({
+        where: { id: session.id },
+        data: {
+          cleanupScope: {
+            computerId: "shared-secret-computer",
+            computer: {
+              id: "fake-container",
+              providerRef: "fake-container",
+              botId: "fake-home",
+              kind: "docker",
+            },
+            botId,
+            request: {
+              expectedInstallationId: "a".repeat(32),
+              sessionScope: {
+                threadId,
+                profileId: profile.id,
+                profileRevision: profile.revision,
+                accountId: accounts[index]!.id,
+                epoch: session.epoch,
+              },
+            },
+          },
+        },
+      });
+      await updateNativeHarnessSession(prisma, { ...scope, outcome: "completed" });
+      return session;
+    }
+    const selected = await sessionFor(0);
+    const sibling = await sessionFor(1);
+    await prisma.userModelCredential.update({
+      where: { id: accounts[0]!.id },
+      data: { secretId: rotatedSecretId },
+    });
+    expect(await prisma.nativeHarnessSession.findUnique({ where: { id: selected.id } })).toBeNull();
+    expect(
+      await prisma.nativeHarnessSession.findUnique({ where: { id: sibling.id } }),
+    ).not.toBeNull();
+    expect(await prisma.nativeStateCleanup.count({ where: { spaceId, userId } })).toBe(1);
+
+    // Reconnect the selected account to the shared secret, then test the DELETE trigger too.
+    await prisma.userModelCredential.update({
+      where: { id: accounts[0]!.id },
+      data: { secretId: sharedSecretId },
+    });
+    const reconnected = await sessionFor(0);
+    await prisma.userModelCredential.delete({ where: { id: accounts[0]!.id } });
+    expect(
+      await prisma.nativeHarnessSession.findUnique({ where: { id: reconnected.id } }),
+    ).toBeNull();
+    expect(
+      await prisma.nativeHarnessSession.findUnique({ where: { id: sibling.id } }),
+    ).not.toBeNull();
+    const queued = await prisma.nativeStateCleanup.findMany({ where: { spaceId, userId } });
+    expect(queued).toHaveLength(2);
+    for (const row of queued)
+      expect(row.scope).toMatchObject({
+        request: { sessionScope: { profileId: profiles[0]!.id, accountId: accounts[0]!.id } },
+      });
+
+    await prisma.bot.update({ where: { id: botId }, data: { executionProfileId: null } });
+    await prisma.userModelCredential.delete({ where: { id: accounts[1]!.id } });
+    await prisma.nativeStateCleanup.deleteMany({ where: { spaceId, userId } });
+  });
+
   it("preserves Pi defaults, pins every insertion, and rejects mutation or revoked credentials", async () => {
     const legacy = await createRun("message");
     expect(legacy.executionProfileSnapshot).toBeNull();
@@ -115,6 +241,8 @@ describePostgres("execution profile migration (PostgreSQL)", () => {
         provider: "anthropic",
         credentialId,
         protocol: "anthropic",
+        authScheme: "api-key",
+        modelRoles: {},
         endpoint: "https://api.example.test",
         modelId: "offline-model",
         inputModalities: ["image"],
@@ -172,6 +300,30 @@ describePostgres("execution profile migration (PostgreSQL)", () => {
       leaseFence: saved.leaseFence,
     };
     const oldSession = await claimNativeHarnessSession(prisma, nativeScope);
+    const cleanupScope = {
+      computerId: "fake-computer",
+      computer: {
+        id: "fake-container",
+        providerRef: "fake-container",
+        botId: "fake-home",
+        kind: "docker",
+      },
+      botId,
+      request: {
+        expectedInstallationId: "a".repeat(32),
+        sessionScope: {
+          threadId,
+          profileId: profile.id,
+          profileRevision: profile.revision,
+          accountId: credentialId,
+          epoch: oldSession.epoch,
+        },
+      },
+    };
+    await prisma.nativeHarnessSession.update({
+      where: { id: oldSession.id },
+      data: { cleanupScope },
+    });
     await updateNativeHarnessSession(prisma, {
       ...nativeScope,
       nativeSessionId: "offline-old-account-checkpoint",
@@ -185,6 +337,10 @@ describePostgres("execution profile migration (PostgreSQL)", () => {
       where: { id: credentialId },
       data: { secretId: replacementSecretId },
     });
+    expect(
+      await prisma.nativeHarnessSession.findUnique({ where: { id: oldSession.id } }),
+    ).toBeNull();
+    expect(await prisma.nativeStateCleanup.count({ where: { spaceId, userId } })).toBe(1);
     await expect(resolveRunExecutionProfile(prisma, saved)).rejects.toThrow("account changed");
     await prisma.bot.update({ where: { id: botId }, data: { executionProfileId: profile.id } });
     const newAccountRun = await createRun("message");
@@ -194,6 +350,11 @@ describePostgres("execution profile migration (PostgreSQL)", () => {
       leaseFence: newAccountRun.leaseFence,
     });
     expect(newSession.epoch).not.toBe(oldSession.epoch);
+    const cleanup = await prisma.nativeStateCleanup.findFirstOrThrow({
+      where: { spaceId, userId },
+    });
+    expect(cleanup.scope).toMatchObject({ request: { sessionScope: { epoch: oldSession.epoch } } });
+    expect(cleanup.computerId).toBe("fake-computer");
     expect(newSession.nativeSessionId).toBeNull();
     expect(newSession.credentialSecretId).toBe(replacementSecretId);
     await updateNativeHarnessSession(prisma, {
@@ -202,10 +363,32 @@ describePostgres("execution profile migration (PostgreSQL)", () => {
       leaseFence: newAccountRun.leaseFence,
       outcome: "completed",
     });
+    await prisma.nativeHarnessSession.update({
+      where: { id: newSession.id },
+      data: {
+        cleanupScope: {
+          ...cleanupScope,
+          request: {
+            ...cleanupScope.request,
+            sessionScope: { ...cleanupScope.request.sessionScope, epoch: newSession.epoch },
+          },
+        },
+      },
+    });
     await prisma.userModelCredential.delete({ where: { id: credentialId } });
+    expect(
+      await prisma.nativeHarnessSession.findUnique({ where: { id: newSession.id } }),
+    ).toBeNull();
+    expect(await prisma.nativeStateCleanup.count({ where: { spaceId, userId } })).toBe(2);
     expect(await prisma.executionProfile.findUnique({ where: { id: profile.id } })).not.toBeNull();
     await expect(resolveRunExecutionProfile(prisma, saved)).rejects.toThrow("disconnected");
     await prisma.bot.update({ where: { id: botId }, data: { executionProfileId: profile.id } });
     await expect(createRun("message")).rejects.toThrow("credential disconnected");
+    await prisma.bot.delete({ where: { id: botId } });
+    const afterCascade = await prisma.nativeStateCleanup.findMany({ where: { spaceId, userId } });
+    expect(afterCascade).toHaveLength(2);
+    expect(afterCascade.some((row) => JSON.stringify(row.scope).includes(newSession.epoch))).toBe(
+      true,
+    );
   });
 });

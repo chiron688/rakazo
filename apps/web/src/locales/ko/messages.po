@@ -225,7 +225,9 @@ msgstr ""
 msgid "Access token (optional)"
 msgstr "액세스 토큰(선택 사항)"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/AccountSettingsOverlay.tsx
+#: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Account"
 msgstr "계정"
@@ -242,6 +244,11 @@ msgstr "계정 ID"
 #: src/pages/PluginsOverlay.tsx
 msgid "Account label"
 msgstr ""
+
+#: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
+msgid "Account name"
+msgstr "계정 이름"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Accounts"
@@ -307,6 +314,10 @@ msgstr "서버 이름을 입력하세요."
 msgid "Add a stdio command."
 msgstr "stdio 명령을 입력하세요."
 
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Add account…"
+msgstr "계정 추가…"
+
 #: src/pages/McpServersOverlay.tsx
 msgid "Add an HTTPS server URL."
 msgstr "HTTPS 서버 URL을 입력하세요."
@@ -364,6 +375,10 @@ msgstr "서버 추가"
 msgid "Add server URL"
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Add signed-in account"
+msgstr "로그인 계정 추가"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Add to routine"
 msgstr "자동 실행에 추가"
@@ -393,6 +408,7 @@ msgstr "추가 중…"
 #: src/pages/RoutineEditor.tsx
 #: src/pages/RoutineSchedule.tsx
 #: src/pages/shell/bot-panel.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Advanced"
 msgstr "고급 설정"
 
@@ -483,6 +499,10 @@ msgstr "항상 허용됨"
 msgid "An API key is stored for this provider, not a subscription sign-in."
 msgstr "이 서비스에는 구독 로그인이 아니라 API 키가 저장되어 있습니다."
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "An available Linux Docker computer is required."
+msgstr "사용 가능한 Linux Docker 컴퓨터가 필요합니다."
+
 #: src/components/AskCard.tsx
 msgid "Answer"
 msgstr "답변"
@@ -513,6 +533,7 @@ msgstr "API가 다시 작동하지만 업데이트가 완료되지 않았습니�
 #: src/lib/localized-provider-hint.ts
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "API key"
 msgstr "API 키"
@@ -624,6 +645,10 @@ msgstr "첨부 파일"
 msgid "Authentication failed."
 msgstr "인증에 실패했습니다."
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Authentication header"
+msgstr "인증 헤더"
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 msgid "Authorization code or callback URL"
@@ -703,6 +728,7 @@ msgstr ""
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Bearer token"
 msgstr "Bearer 토큰"
 
@@ -803,6 +829,7 @@ msgstr "서버에 연결할 수 없습니다."
 #: src/pages/Artifacts.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
@@ -822,6 +849,10 @@ msgstr "새 그룹 만들기 취소"
 #: src/pages/shell/chat-context.tsx
 msgid "Cancel reply"
 msgstr "답장 취소"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Cancel sign-in"
+msgstr "로그인 취소"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Canceled"
@@ -933,9 +964,17 @@ msgstr "새 비밀번호 선택"
 msgid "Choose account"
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Choose computer"
+msgstr "컴퓨터 선택"
+
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Choose file"
 msgstr "파일 선택"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Choose model"
+msgstr "모델 선택"
 
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Choose provider"
@@ -1096,6 +1135,7 @@ msgstr ""
 msgid "Complete"
 msgstr "완료"
 
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/Shell.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -1172,8 +1212,8 @@ msgid "Connect a provider to add backups."
 msgstr "백업을 추가하려면 제공업체를 연결하세요."
 
 #: src/pages/shell/execution-profile-settings.tsx
-msgid "Connect an API account in Models first."
-msgstr ""
+msgid "Connect an account in Models first."
+msgstr "먼저 모델에서 계정을 연결하세요."
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Connect API key"
@@ -1203,6 +1243,7 @@ msgstr "Treg 연결"
 #: src/pages/McpOAuthCallback.tsx
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/shell/message-cards.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Connected"
@@ -1308,6 +1349,10 @@ msgstr "비밀번호를 변경할 수 없습니다"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Could not change the default model"
 msgstr "기본 모델을 변경하지 못했습니다."
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not check sign-in. Try reconnecting."
+msgstr "로그인을 확인할 수 없습니다. 다시 연결해 보세요."
 
 #: src/lib/model-connection-preflight.ts
 msgid "Could not check stored credentials."
@@ -1416,6 +1461,10 @@ msgstr ""
 msgid "Could not delete this artifact."
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not disconnect account"
+msgstr "계정 연결을 해제할 수 없습니다"
+
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "Could not disconnect memory provider"
 msgstr "기억 서비스 연결을 해제하지 못했습니다."
@@ -1515,6 +1564,10 @@ msgstr "MCP 서버 목록을 불러오지 못했습니다."
 msgid "Could not load model settings"
 msgstr "AI 모델 설정을 불러오지 못했습니다."
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Could not load models"
+msgstr "모델을 불러올 수 없습니다"
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Could not load run history"
 msgstr "실행 기록을 불러오지 못했습니다"
@@ -1523,6 +1576,10 @@ msgstr "실행 기록을 불러오지 못했습니다"
 #: src/pages/Auth.tsx
 msgid "Could not load sign-in options"
 msgstr "로그인 옵션을 불러올 수 없습니다"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not load signed-in accounts"
+msgstr "로그인 계정을 불러올 수 없습니다"
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not load skill"
@@ -1595,6 +1652,10 @@ msgstr "확인 규칙을 삭제하지 못했습니다."
 #: src/pages/shell/bot-credentials.tsx
 msgid "Could not remove the credential"
 msgstr ""
+
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Could not rename account"
+msgstr "계정 이름을 변경할 수 없습니다"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not rename connection"
@@ -1693,6 +1754,10 @@ msgstr "메시지를 보내지 못했습니다."
 #: src/pages/McpServersOverlay.tsx
 msgid "Could not start OAuth"
 msgstr "OAuth 인증을 시작하지 못했습니다."
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not start sign-in"
+msgstr "로그인을 시작할 수 없습니다"
 
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Could not start teaching"
@@ -1893,6 +1958,10 @@ msgstr "기본값 ({0})"
 msgid "Default scope"
 msgstr "기본 기억 범위"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Delegated agents are unavailable for signed-in accounts."
+msgstr "로그인 계정에서는 위임 에이전트를 사용할 수 없습니다."
+
 #: src/pages/Artifacts.tsx
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
@@ -1991,6 +2060,7 @@ msgstr ""
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Disconnect"
 msgstr "연결 해제"
@@ -1998,6 +2068,10 @@ msgstr "연결 해제"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Disconnect {disconnectName}?"
 msgstr ""
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Disconnect {logoutName}?"
+msgstr "{logoutName} 연결을 해제할까요?"
 
 #. placeholder {0}: selected.providerName ?? selected.provider
 #: src/pages/ModelSettingsOverlay.tsx
@@ -2165,10 +2239,6 @@ msgstr "테스트하기 전에 API 키를 입력하세요."
 msgid "Environment"
 msgstr ""
 
-#: src/pages/shell/execution-profile-settings.tsx
-msgid "Environment: Bot computer"
-msgstr ""
-
 #: src/lib/roster-status.ts
 #: src/pages/Shell.tsx
 msgid "Error"
@@ -2207,6 +2277,7 @@ msgstr "매월"
 msgid "Every week"
 msgstr "매주"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Execution profile"
 msgstr ""
@@ -2305,6 +2376,10 @@ msgstr "찾는 중…"
 msgid "Finish signing in at <0>{0}</0>. The final page may not load; paste its URL or code here."
 msgstr "<0>{0}</0>에서 로그인을 마치세요. 마지막 페이지가 열리지 않아도 괜찮습니다. 그 페이지의 URL이나 코드를 여기에 붙여넣으세요."
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Finish signing in in your browser:"
+msgstr "브라우저에서 로그인을 완료하세요:"
+
 #: src/lib/model-connection-preflight.ts
 msgid "Finish subscription sign-in, then test again."
 msgstr "구독 로그인을 마친 뒤 다시 테스트하세요."
@@ -2372,10 +2447,18 @@ msgstr ""
 msgid "Git event"
 msgstr "Git 이벤트"
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Global"
+msgstr "글로벌"
+
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/Shell.tsx
 msgid "Group"
 msgstr "그룹"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Group handoffs remain available."
+msgstr "그룹 내 인계는 계속 사용할 수 있습니다."
 
 #: src/pages/GroupPanel.tsx
 msgid "Group settings"
@@ -2401,6 +2484,8 @@ msgstr "먼저 전화를 끊은 다음 화면에 표시된 코드를 입력하�
 msgid "Hang up, then enter the code on screen."
 msgstr "전화를 끊은 다음 화면에 표시된 코드를 입력하세요."
 
+#: src/components/RunExecutionProfileDetails.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Harness"
 msgstr ""
@@ -2732,6 +2817,10 @@ msgstr ""
 msgid "Lowercase letters, numbers, hyphens and underscores, starting with a letter."
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Mainland China"
+msgstr "중국 본토"
+
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Make sure nothing is still running on this computer."
 msgstr "이 컴퓨터에서 실행 중인 작업이 없는지 확인하세요."
@@ -2912,6 +3001,7 @@ msgstr "분"
 msgid "minutes"
 msgstr "분"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/RoutineEditor.tsx
@@ -2932,8 +3022,13 @@ msgstr ""
 msgid "Model accepts uploaded audio"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Model for {role}"
+msgstr "{role}용 모델"
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Model id"
 msgstr "모델 ID"
 
@@ -3025,6 +3120,10 @@ msgstr "그룹 이름"
 #: src/pages/RoutineEditor.tsx
 msgid "Name this routine"
 msgstr "이 루틴의 이름을 정하세요"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Native sign-in"
+msgstr "네이티브 로그인"
 
 #: src/lib/roster-status.ts
 msgid "Needs an answer"
@@ -3385,6 +3484,7 @@ msgstr "원본 메시지를 사용할 수 없습니다"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Other model…"
 msgstr "다른 모델 직접 입력…"
 
@@ -3446,6 +3546,11 @@ msgstr "API 키를 붙여넣은 뒤 다시 테스트하세요."
 msgid "Paused"
 msgstr "일시 중지됨"
 
+#: src/pages/NativeLoginSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Personal interactive chats only."
+msgstr "개인 대화형 채팅만 지원합니다."
+
 #: src/pages/Shell.tsx
 #: src/pages/shell/chat-context.tsx
 msgid "Photo"
@@ -3500,6 +3605,11 @@ msgstr ""
 msgid "Private"
 msgstr "Bot 전용"
 
+#: src/pages/NativeLoginSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Private computer"
+msgstr "전용 컴퓨터"
+
 #: src/pages/shell/dialogs.tsx
 msgid "Private workspace with its own bots and groups."
 msgstr ""
@@ -3520,6 +3630,7 @@ msgstr ""
 msgid "Protocol"
 msgstr ""
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/shell/execution-profile-settings.tsx
@@ -3571,6 +3682,10 @@ msgstr ""
 #: src/pages/ActivityList.tsx
 msgid "Recent"
 msgstr "최근"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Reconnect"
+msgstr "다시 연결"
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Reconnect OAuth"
@@ -3651,6 +3766,10 @@ msgstr "화면 새로고침"
 msgid "Refreshing…"
 msgstr "새로고침 중…"
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Region"
+msgstr "지역"
+
 #: src/lib/user-error.ts
 msgid "Registration is closed"
 msgstr "가입이 마감되었습니다"
@@ -3722,9 +3841,17 @@ msgstr "대화, 컴퓨터, 기억과 함께 삭제되었습니다."
 msgid "Removed, but list refresh failed"
 msgstr "삭제했지만 목록을 새로고침하지 못했습니다."
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Removes this sign-in from Rakazo. Provider sessions may remain active."
+msgstr "Rakazo에서 이 로그인을 삭제합니다. 제공업체 세션은 활성 상태로 남을 수 있습니다."
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Removing…"
 msgstr "삭제 중…"
+
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Rename"
+msgstr "이름 변경"
 
 #: src/pages/BotContextMenu.tsx
 #: src/pages/Shell.tsx
@@ -3893,6 +4020,10 @@ msgstr ""
 msgid "Run at"
 msgstr "실행 시간"
 
+#: src/components/RunExecutionProfileDetails.tsx
+msgid "Run details"
+msgstr "실행 세부 정보"
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Run history"
 msgstr "실행 기록"
@@ -3944,10 +4075,6 @@ msgstr "백업 모델 저장"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Save credential"
-msgstr ""
-
-#: src/pages/ModelSettingsOverlay.tsx
-msgid "Save limits"
 msgstr ""
 
 #: src/pages/shell/bot-credentials.tsx
@@ -4199,6 +4326,7 @@ msgstr ""
 #: src/lib/localized-provider-hint.ts
 #: src/pages/Auth.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/Welcome.tsx
 msgid "Sign in"
@@ -4226,6 +4354,22 @@ msgstr "구독으로 로그인하거나 대신 API 키를 테스트하세요."
 #: src/pages/Welcome.tsx
 msgid "Sign up"
 msgstr "가입하기"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Sign-in did not complete"
+msgstr "로그인이 완료되지 않았습니다"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Sign-in expired"
+msgstr "로그인 시간이 만료되었습니다"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Sign-in page unavailable"
+msgstr "로그인 페이지를 사용할 수 없습니다"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Signed out"
+msgstr "로그아웃됨"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Site"
@@ -4419,6 +4563,11 @@ msgstr "작업을 가르치는 중입니다. 새 메시지를 보내려면 먼�
 msgid "Team"
 msgstr "팀 공용"
 
+#: src/pages/NativeLoginSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Team computer"
+msgstr "팀 컴퓨터"
+
 #: src/pages/Shell.tsx
 msgid "Team Computer"
 msgstr "팀 컴퓨터"
@@ -4490,6 +4639,10 @@ msgstr "생각 깊이"
 msgid "Thinking: {activeThinkingLabel}"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "This account’s protocol is not supported by execution profiles."
+msgstr "실행 프로필에서 이 계정의 프로토콜을 지원하지 않습니다."
+
 #: src/pages/Shell.tsx
 msgid "This bot runs on this computer, not a Linux desktop. Shell and files use your home folder."
 msgstr "이 Bot은 별도 Linux 화면이 아니라 현재 컴퓨터에서 실행됩니다. 터미널과 파일 작업은 홈 폴더를 사용합니다."
@@ -4518,6 +4671,10 @@ msgstr ""
 #: src/components/ArtifactFileCard.tsx
 msgid "This file is not valid UTF-8 text."
 msgstr ""
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "This is my personal, self-hosted deployment."
+msgstr "개인용 자체 호스팅 배포입니다."
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "this Mac"
@@ -4828,6 +4985,10 @@ msgstr ""
 #: src/pages/shell/bot-credentials.tsx
 msgid "Values are encrypted and never shown again."
 msgstr "값은 암호화되며 다시 표시되지 않습니다."
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Verification code"
+msgstr "인증 코드"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Verify and add"

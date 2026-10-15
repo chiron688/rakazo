@@ -1,9 +1,15 @@
 """Trusted one-frame bootstrap. Credentials never enter Docker config or process argv."""
 import json
 import os
+import re
 import sys
 
-CREDENTIAL_KEYS = frozenset((
+MODEL_ROLE_KEYS = frozenset((
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL",
+    "CLAUDE_CODE_SUBAGENT_MODEL",
+))
+CREDENTIAL_KEYS = MODEL_ROLE_KEYS | frozenset((
     "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
     "OPENAI_API_KEY", "OPENAI_BASE_URL", "KIMI_API_KEY", "KIMI_BASE_URL",
     "KIMI_DISABLE_TELEMETRY",
@@ -43,6 +49,14 @@ def launch():
     if (not isinstance(environment, dict) or not set(environment) <= CREDENTIAL_KEYS
             or any(not isinstance(value, str) or "\0" in value for value in environment.values())):
         raise ValueError("Invalid environment")
+    if "ANTHROPIC_API_KEY" in environment and "ANTHROPIC_AUTH_TOKEN" in environment:
+        raise ValueError("Ambiguous credential scheme")
+    for key in MODEL_ROLE_KEYS & environment.keys():
+        value = environment[key]
+        # Match the API schema's JavaScript UTF-16 length bound, including astral characters.
+        if (len(value.encode("utf-16-le")) > 400 or not value.strip()
+                or re.search(r"[\x00-\x1f\x7f]", value)):
+            raise ValueError("Invalid model role")
     os.execvpe(argv[0], argv, {**ENVIRONMENT, **environment})
 
 

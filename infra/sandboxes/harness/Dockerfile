@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-c
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --gid 10001 harness \
   && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/harness harness \
-  && mkdir /sessions && chown 10001:10001 /sessions && chmod 0700 /sessions
+  && mkdir /sessions /credentials && chown 10001:10001 /sessions /credentials && chmod 0700 /sessions /credentials
 RUN npm install --prefix /opt/rakazo-harness --omit=dev \
   @anthropic-ai/claude-agent-sdk@0.3.300 \
   @anthropic-ai/sdk@0.134.0 \

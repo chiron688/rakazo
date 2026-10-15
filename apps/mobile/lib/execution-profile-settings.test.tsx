@@ -118,6 +118,8 @@ const profile: ExecutionProfile = {
   credentialId: "account-b",
   endpoint: "https://api.example.test",
   modelId: "test-model",
+  authScheme: "api-key",
+  modelRoles: {},
   inputModalities: [],
   computerId: null,
   createdAt: "2026-10-01T00:00:00.000Z",
@@ -147,6 +149,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   mocks.rpc.mockImplementation(async (procedure: string) => {
+    if (procedure === "nativeLogins/list") return { enabled: false, accounts: [], computers: [] };
+    if (procedure === "executionProfiles/models") return [];
     if (procedure === "executionProfiles/list") return [profile];
     if (procedure === "models/credentials") return accounts;
     if (procedure === "executionProfiles/create") return profile;
@@ -240,6 +244,8 @@ describe("native execution profile settings", () => {
       expect.objectContaining({
         supersedesId: legacy.id,
         runtimeVersion: "2.2.0",
+        authScheme: "api-key",
+        modelRoles: {},
         inputModalities: [],
       }),
     );
@@ -286,6 +292,8 @@ describe("native execution profile settings", () => {
       protocol: "anthropic",
       endpoint: "https://api.example.test",
       modelId: "test-model",
+      authScheme: "api-key",
+      modelRoles: {},
       inputModalities: [],
       computerId: null,
     });
@@ -330,4 +338,119 @@ describe("native execution profile settings", () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
   });
+});
+
+it("keeps a current revision’s pinned environment and advanced authentication", async () => {
+  const pinned = {
+    ...profile,
+    computerId: "computer-review",
+    authScheme: "bearer",
+    modelRoles: { haiku: "review-model" },
+    inputModalities: ["image"],
+  };
+  const base = mocks.rpc.getMockImplementation()!;
+  mocks.rpc.mockImplementation((procedure: string, input?: unknown) =>
+    procedure === "executionProfiles/list" ? Promise.resolve([pinned]) : base(procedure, input),
+  );
+  await render(profile.id);
+  await click("New revision");
+  await change("Profile name", "New name");
+  await click("Create profile");
+  expect(mocks.rpc).toHaveBeenCalledWith(
+    "executionProfiles/create",
+    expect.objectContaining({
+      supersedesId: profile.id,
+      name: "New name",
+      computerId: "computer-review",
+      authScheme: "bearer",
+      modelRoles: { haiku: "review-model" },
+      inputModalities: ["image"],
+    }),
+  );
+});
+it("derives Pi protocol from the exact account model catalog", async () => {
+  const base = mocks.rpc.getMockImplementation()!;
+  mocks.rpc.mockImplementation((procedure: string, input?: unknown) => {
+    if (procedure === "executionProfiles/models")
+      return Promise.resolve([
+        {
+          id: "catalog-model",
+          label: "Catalog model",
+          protocol: "anthropic",
+          inputModalities: ["image"],
+        },
+      ]);
+    return base(procedure, input);
+  });
+  await render();
+  await click("New profile");
+  await change("Profile name", "Pi review");
+  await change("Harness", "pi");
+  await change("Provider", "anthropic");
+  await change("Account", "account-b");
+  await change("Model", "catalog-model");
+  await click("Create profile");
+  expect(mocks.rpc).toHaveBeenCalledWith("executionProfiles/models", {
+    harness: "pi",
+    credentialId: "account-b",
+  });
+  expect(mocks.rpc).toHaveBeenCalledWith(
+    "executionProfiles/create",
+    expect.objectContaining({
+      harness: "pi",
+      credentialId: "account-b",
+      protocol: "anthropic",
+      modelId: "catalog-model",
+      endpoint: null,
+    }),
+  );
+});
+it("pins signed-in native accounts and exposes their helper limitation", async () => {
+  const signed = {
+    ...profile,
+    harness: "kimi",
+    provider: "native-kimi",
+    protocol: "openai-chat-completions",
+    runtimeVersion: "2.2.0",
+    credentialId: "signed-in",
+    computerId: "computer-login",
+    endpoint: "https://api.kimi.ai/coding/v1",
+  };
+  const base = mocks.rpc.getMockImplementation()!;
+  mocks.rpc.mockImplementation((procedure: string, input?: unknown) => {
+    if (procedure === "executionProfiles/list") return Promise.resolve([signed]);
+    if (procedure === "nativeLogins/list")
+      return Promise.resolve({
+        enabled: true,
+        accounts: [
+          {
+            credentialId: "signed-in",
+            label: "Personal Kimi",
+            harness: "kimi",
+            endpoint: signed.endpoint,
+            computerId: signed.computerId,
+            state: { state: "ready", accountLabel: null, plan: null },
+          },
+        ],
+        computers: [],
+      });
+    return base(procedure, input);
+  });
+  await render(profile.id);
+  expect(container.textContent).toContain(
+    "Delegated agents are unavailable for signed-in accounts.",
+  );
+  expect(container.textContent).toContain("Personal interactive chats only.");
+  expect(container.textContent).toContain("Group handoffs remain available.");
+  await click("New revision");
+  expect((field("Endpoint") as HTMLInputElement).disabled).toBe(true);
+  await click("Create profile");
+  expect(mocks.rpc).toHaveBeenCalledWith(
+    "executionProfiles/create",
+    expect.objectContaining({
+      credentialId: "signed-in",
+      computerId: "computer-login",
+      endpoint: signed.endpoint,
+    }),
+  );
 });

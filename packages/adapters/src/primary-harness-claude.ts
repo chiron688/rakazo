@@ -1,4 +1,9 @@
 import type { AgentRunRequest, SandboxProcessRequest } from "@rakazo/adapter-kit";
+import {
+  claudeProviderFailure,
+  nativeHttpFailure,
+  nativeProviderError,
+} from "./primary-harness-errors.js";
 import { prepareNativeMedia } from "./primary-harness-media.js";
 import type { NativeProtocolChannel, NativeProtocolContext } from "./primary-harness-protocol.js";
 import { nativeObject, nativeString } from "./primary-harness-protocol.js";
@@ -99,6 +104,7 @@ async function start(message){
   send({id:message.id,result:{version}});
   for await(const event of session){
     if(event.type==='system'&&event.subtype==='init')send({method:'rakazo/session',params:{id:event.session_id}});
+    else if(event.type==='system'&&event.subtype==='api_retry')send({method:'rakazo/provider-failure',params:{code:event.error,status:event.error_status}});
     else if(event.type==='stream_event')send({method:'rakazo/sdk',params:event});
     else if(event.type==='result')send({method:'rakazo/sdk',params:event});
     else if(event.type==='assistant')send({method:'rakazo/assistant',params:event});
@@ -107,13 +113,39 @@ async function start(message){
 }
 `;
 
+const CLAUDE_MODEL_ROLE_ENV = {
+  haiku: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  sonnet: "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  opus: "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  fable: "ANTHROPIC_DEFAULT_FABLE_MODEL",
+  subagent: "CLAUDE_CODE_SUBAGENT_MODEL",
+} as const;
+
 export function buildClaudeProcess(request: AgentRunRequest): SandboxProcessRequest {
+  const scheme = request.model.authScheme ?? "api-key";
+  if (scheme !== "api-key" && scheme !== "bearer")
+    throw new Error("Unsupported Anthropic authentication scheme.");
+  const roles: Record<string, string> = {};
+  for (const [role, model] of Object.entries(request.model.modelRoles ?? {})) {
+    if (
+      !Object.hasOwn(CLAUDE_MODEL_ROLE_ENV, role) ||
+      typeof model !== "string" ||
+      !model.length ||
+      model.length > 200 ||
+      model.trim() !== model ||
+      Array.from(model).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+    )
+      throw new Error("Invalid Claude model role mapping.");
+    roles[CLAUDE_MODEL_ROLE_ENV[role as keyof typeof CLAUDE_MODEL_ROLE_ENV]] = model;
+  }
   return {
     isolation: "primary-harness",
     argv: ["node", "--input-type=module", "--eval", CLAUDE_SANDBOX_RUNNER],
     env: {
-      ANTHROPIC_API_KEY: request.model.apiKey ?? "",
+      [scheme === "bearer" ? "ANTHROPIC_AUTH_TOKEN" : "ANTHROPIC_API_KEY"]:
+        request.model.apiKey ?? "",
       ANTHROPIC_BASE_URL: request.model.baseUrl ?? "",
+      ...roles,
     },
   };
 }
@@ -155,7 +187,14 @@ export async function runClaudeProtocol(
     } else if (message.method === "rakazo/session") {
       await context.onSession(nativeString(nativeObject(message.params).id));
     } else if (message.method === "rakazo/assistant") {
-      const messageBody = nativeObject(nativeObject(message.params).message);
+      const assistant = nativeObject(message.params);
+      if (assistant.error) {
+        const failure = claudeProviderFailure(assistant.error);
+        throw failure
+          ? nativeProviderError("Claude Agent", failure)
+          : new Error("Claude Agent provider request failed.");
+      }
+      const messageBody = nativeObject(assistant.message);
       if (Array.isArray(messageBody.content)) {
         for (const part of messageBody.content) {
           const item = nativeObject(part);
@@ -211,6 +250,10 @@ export async function runClaudeProtocol(
         }
         return;
       }
+    } else if (message.method === "rakazo/provider-failure") {
+      const detail = nativeObject(message.params);
+      const failure = claudeProviderFailure(detail.code) ?? nativeHttpFailure(detail.status);
+      if (failure) throw nativeProviderError("Claude Agent", failure);
     } else if (message.method === "rakazo/failure") {
       throw new Error("Claude Agent process failed.");
     } else if (message.method !== undefined && message.id !== undefined) {

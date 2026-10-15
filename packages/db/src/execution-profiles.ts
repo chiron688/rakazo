@@ -212,7 +212,10 @@ export async function resolveRunExecutionProfile(
       key === "inputModalities"
         ? JSON.stringify([...snapshot.inputModalities].sort()) ===
           JSON.stringify([...expected.inputModalities].sort())
-        : snapshot[key] === expected[key];
+        : key === "modelRoles"
+          ? JSON.stringify(Object.entries(snapshot.modelRoles).sort()) ===
+            JSON.stringify(Object.entries(expected.modelRoles).sort())
+          : snapshot[key] === expected[key];
     if (!equal) {
       throw new ExecutionProfileUnavailableError(
         "The run execution profile does not match its revision.",

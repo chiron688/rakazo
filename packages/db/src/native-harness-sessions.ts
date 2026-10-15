@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient } from "./client.js";
+import { resolveExecutionHandover } from "./execution-handover.js";
 import {
   ExecutionProfileUnavailableError,
   resolveRunExecutionProfile,
@@ -38,7 +39,7 @@ async function lockNativeSessionRun(tx: Prisma.TransactionClient, input: NativeS
 /** Claim a scoped continuation. A crashed or interrupted session requires an explicit new session. */
 export async function claimNativeHarnessSession(
   prisma: PrismaClient,
-  input: NativeSessionScope & { startNewSession?: boolean },
+  input: NativeSessionScope & { startNewSession?: boolean; installationId?: string },
 ) {
   return prisma.$transaction(async (tx) => {
     await lockNativeSessionRun(tx, input);
@@ -80,9 +81,11 @@ export async function claimNativeHarnessSession(
     });
     // A fresh, explicitly requested turn may reconstruct from Rakazo history. Never
     // restart the interrupted run itself or silently replay its uncertain side effects.
+    const handover = await resolveExecutionHandover(tx, { ...input, id: input.runId });
+    const profileChanged = Boolean(handover) && session.lastRunId !== input.runId;
     const credentialChanged = session.credentialSecretId !== resolved.snapshot.credentialSecretId;
     const previousRun =
-      (input.startNewSession || credentialChanged) &&
+      (input.startNewSession || credentialChanged || profileChanged) &&
       session.activeRunId &&
       session.activeRunId !== input.runId
         ? await tx.run.findFirst({
@@ -96,6 +99,15 @@ export async function claimNativeHarnessSession(
       credentialChanged &&
       (!session.activeRunId || abandoned) &&
       session.interruptedRunId !== input.runId;
+    const resetForProfile =
+      profileChanged &&
+      (!session.activeRunId || abandoned) &&
+      session.interruptedRunId !== input.runId;
+    if (profileChanged && !resetForProfile) {
+      throw new ExecutionProfileUnavailableError(
+        "The previous execution profile session is still active.",
+      );
+    }
     if (credentialChanged && !resetForCredential) {
       throw new ExecutionProfileUnavailableError(
         "The native session still belongs to a run using the previous account connection.",
@@ -103,6 +115,7 @@ export async function claimNativeHarnessSession(
     }
     if (
       resetForCredential ||
+      resetForProfile ||
       (input.startNewSession &&
         (abandoned || (session.interrupted && session.interruptedRunId !== input.runId)))
     ) {
@@ -113,7 +126,7 @@ export async function claimNativeHarnessSession(
           activeRunId: session.activeRunId,
           activeLeaseFence: session.activeLeaseFence,
           credentialSecretId: session.credentialSecretId,
-          ...(abandoned || resetForCredential
+          ...(abandoned || resetForCredential || resetForProfile
             ? {}
             : { interrupted: true, interruptedRunId: { not: input.runId } }),
         },
@@ -136,6 +149,37 @@ export async function claimNativeHarnessSession(
       session.epoch = epoch;
       session.credentialSecretId = resolved.snapshot.credentialSecretId;
     }
+    const computer = resolved.snapshot.computerId
+      ? await tx.computer.findFirst({
+          where: { id: resolved.snapshot.computerId, spaceId: input.spaceId, userId: input.userId },
+        })
+      : null;
+    const cleanupScope =
+      computer?.providerRef &&
+      computer.kind === "docker" &&
+      input.installationId &&
+      /^[a-f0-9]{32}$/.test(input.installationId)
+        ? {
+            computerId: computer.id,
+            computer: {
+              id: computer.providerRef,
+              providerRef: computer.providerRef,
+              botId: computer.homeKey,
+              kind: "docker",
+            },
+            botId: input.botId,
+            request: {
+              expectedInstallationId: input.installationId,
+              sessionScope: {
+                threadId: input.threadId,
+                profileId: input.profileId,
+                profileRevision: resolved.profile.revision,
+                accountId: resolved.snapshot.credentialId,
+                epoch: session.epoch,
+              },
+            },
+          }
+        : undefined;
     const claimed = await tx.nativeHarnessSession.updateMany({
       where: {
         id: session.id,
@@ -148,7 +192,12 @@ export async function claimNativeHarnessSession(
           { activeRunId: input.runId, activeLeaseFence: input.leaseFence },
         ],
       },
-      data: { activeRunId: input.runId, activeLeaseFence: input.leaseFence },
+      data: {
+        activeRunId: input.runId,
+        activeLeaseFence: input.leaseFence,
+        lastRunId: input.runId,
+        ...(cleanupScope ? { cleanupScope } : {}),
+      },
     });
     if (claimed.count !== 1) {
       throw new ExecutionProfileUnavailableError(

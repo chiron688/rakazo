@@ -1,4 +1,48 @@
 export const DE_MESSAGES: Record<string, string> = {
+  "Group handoffs remain available.": "Gruppenübergaben bleiben verfügbar.",
+  "Account name": "Kontoname",
+  "Add account…": "Konto hinzufügen…",
+  "Add signed-in account": "Angemeldetes Konto hinzufügen",
+  "An available Linux Docker computer is required.":
+    "Ein verfügbarer Linux-Docker-Computer ist erforderlich.",
+  "Authentication header": "Authentifizierungs-Header",
+  "Cancel sign-in": "Anmeldung abbrechen",
+  "Choose computer": "Computer auswählen",
+  "Choose model": "Modell auswählen",
+  "Connect an account in Models first.": "Verbinde zuerst ein Konto unter Modelle.",
+  "Could not check sign-in. Try reconnecting.":
+    "Anmeldung konnte nicht geprüft werden. Versuche, das Konto neu zu verbinden.",
+  "Could not disconnect account": "Konto konnte nicht getrennt werden",
+  "Could not load models": "Modelle konnten nicht geladen werden",
+  "Could not load signed-in accounts": "Angemeldete Konten konnten nicht geladen werden",
+  "Could not rename account": "Konto konnte nicht umbenannt werden",
+  "Delegated agents are unavailable for signed-in accounts.":
+    "Delegierte Agenten sind für angemeldete Konten nicht verfügbar.",
+  "Disconnect {logoutName}?": "{logoutName} trennen?",
+  Global: "Global",
+  "Mainland China": "Festlandchina",
+  "Model for {role}": "Modell für {role}",
+  "Native sign-in": "Native Anmeldung",
+  "Personal interactive chats only.": "Nur persönliche interaktive Chats.",
+  "Private computer": "Privater Computer",
+  Reconnect: "Erneut verbinden",
+  Region: "Region",
+  "Removes this sign-in from Rakazo. Provider sessions may remain active.":
+    "Entfernt diese Anmeldung aus Rakazo. Sitzungen beim Anbieter können aktiv bleiben.",
+  Rename: "Umbenennen",
+  "Run details": "Ausführungsdetails",
+  "Sign-in did not complete": "Anmeldung nicht abgeschlossen",
+  "Sign-in expired": "Anmeldung abgelaufen",
+  "Sign-in page unavailable": "Anmeldeseite nicht verfügbar",
+  "Signed out": "Abgemeldet",
+  "Team computer": "Team-Computer",
+  "This account’s protocol is not supported by execution profiles.":
+    "Das Protokoll dieses Kontos wird von Ausführungsprofilen nicht unterstützt.",
+  "This is my personal, self-hosted deployment.":
+    "Dies ist meine persönliche, selbst gehostete Installation.",
+  "Verification code": "Bestätigungscode",
+  "Could not open sign-in page": "Anmeldeseite konnte nicht geöffnet werden",
+  "Open sign-in page": "Anmeldeseite öffnen",
   "Couldn't refresh — showing the last loaded messages.":
     "Aktualisierung fehlgeschlagen – die zuletzt geladenen Nachrichten werden angezeigt.",
   "Try Again": "Erneut versuchen",

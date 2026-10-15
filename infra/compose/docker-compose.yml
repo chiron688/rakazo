@@ -97,6 +97,7 @@ services:
       CLOUD_AGENT_SPACE_ID: ${CLOUD_AGENT_SPACE_ID:-}
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       AGENT_RUNTIME: pi
+      PRIMARY_HARNESS_NATIVE_LOGIN_MODE: ${PRIMARY_HARNESS_NATIVE_LOGIN_MODE:-disabled}
       PRIMARY_HARNESSES_ENABLED: ${PRIMARY_HARNESSES_ENABLED:-false}
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
@@ -146,6 +147,7 @@ services:
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       SCREEN_PROXY_SECRET: ""
       AGENT_RUNTIME: pi
+      PRIMARY_HARNESS_NATIVE_LOGIN_MODE: ${PRIMARY_HARNESS_NATIVE_LOGIN_MODE:-disabled}
       PRIMARY_HARNESSES_ENABLED: ${PRIMARY_HARNESSES_ENABLED:-false}
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}

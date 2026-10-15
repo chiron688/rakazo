@@ -43,6 +43,44 @@ describe("private runtime credential bootstrap", () => {
     expect(lines[1]).toBe("native request");
   });
 
+  it("passes only the documented bearer and model role variables to the child", () => {
+    const roles = {
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "provider/fast[1m]",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "provider/balanced",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "provider/reasoning",
+      ANTHROPIC_DEFAULT_FABLE_MODEL: "provider/fable",
+      CLAUDE_CODE_SUBAGENT_MODEL: "provider/helper",
+    };
+    const result = run({
+      argv: ["/usr/bin/python3", "-I", "-c", "import os,json;print(json.dumps(dict(os.environ)))"],
+      env: { ANTHROPIC_AUTH_TOKEN: "fake-bearer", ...roles },
+    });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ANTHROPIC_AUTH_TOKEN: "fake-bearer",
+      ...roles,
+    });
+    expect(JSON.parse(result.stdout).ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it.each([
+    { ANTHROPIC_API_KEY: "fake-key", ANTHROPIC_AUTH_TOKEN: "fake-token" },
+    { ANTHROPIC_DEFAULT_HAIKU_MODEL: " " },
+    { ANTHROPIC_DEFAULT_SONNET_MODEL: "model\nvalue" },
+    { ANTHROPIC_DEFAULT_OPUS_MODEL: "a".repeat(201) },
+    { ANTHROPIC_DEFAULT_FABLE_MODEL: "\u007f" },
+    { CLAUDE_CODE_SUBAGENT_MODEL: "😀".repeat(101) },
+    { ANTHROPIC_DEFAULT_UNKNOWN_MODEL: "unknown" },
+  ])(
+    "rejects ambiguous authentication or invalid model role values without disclosing them",
+    (env) => {
+      const result = run({ argv: ["/usr/bin/true"], env });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toBe("Isolated runtime bootstrap failed.\n");
+      expect(result.stdout).toBe("");
+    },
+  );
+
   it.each(["LD_PRELOAD", "PYTHONPATH", "NODE_OPTIONS", "HOME", "PATH"])(
     "rejects %s without rendering secret input",
     (key) => {

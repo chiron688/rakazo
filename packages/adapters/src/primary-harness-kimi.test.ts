@@ -225,6 +225,8 @@ describe("Kimi Code ACP protocol", () => {
       instructions: f.context.request.instructions,
       modelId: "example-model",
       endpoint: "https://model.example.test/v1",
+      nativeLogin: false,
+      region: undefined,
       contextWindow: 128_000,
       images: false,
       tools: [

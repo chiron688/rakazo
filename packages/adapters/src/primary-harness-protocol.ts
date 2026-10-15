@@ -131,6 +131,7 @@ export class NativeJsonlChannel implements NativeProtocolChannel {
   private nextId = 0;
   private inputBytes = 0;
   private stopped = false;
+  private closing?: Promise<void>;
   private readonly pump: Promise<void>;
   private readonly onAbort: () => void;
 
@@ -199,11 +200,14 @@ export class NativeJsonlChannel implements NativeProtocolChannel {
     this.messages.end(error);
   }
 
-  async close(): Promise<void> {
-    this.fail(new Error("Native harness transport closed."));
-    this.signal.removeEventListener("abort", this.onAbort);
-    await this.process.terminate();
-    await this.pump;
+  close(): Promise<void> {
+    this.closing ??= (async () => {
+      this.fail(new Error("Native harness transport closed."));
+      this.signal.removeEventListener("abort", this.onAbort);
+      await this.process.terminate();
+      await this.pump;
+    })();
+    return this.closing;
   }
 
   private async read(): Promise<void> {

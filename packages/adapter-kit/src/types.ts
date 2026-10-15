@@ -2,6 +2,8 @@ import type {
   AttachmentAudioMimeType,
   CacheCapabilities as ConnectionCacheCapabilities,
   ConnectionCatalogItem,
+  ExecutionModelRoles,
+  NativeLoginDescriptor,
   SandboxKind,
 } from "@rakazo/contracts";
 
@@ -109,12 +111,29 @@ export interface SandboxProcessRequest {
     profileRevision: number;
     accountId: string;
     epoch: string;
+    /** Root native session epoch for a mediated helper; server-owned, never model supplied. */
+    parentEpoch?: string;
+  };
+  /** Server-owned native login. Mounted privately at /credentials; never a team login/home. */
+  credentialScope?: {
+    harness: "codex" | "kimi";
+    connectionId: string;
+    epoch: string;
   };
   argv: string[];
-  /** Exact runtime credential/endpoint overlay; protected OS/config variables cannot be replaced. */
+  /** Exact runtime credential/endpoint/model-role overlay; protected OS/config variables cannot be replaced. */
   env?: Record<string, string>;
   timeoutMs?: number;
 }
+
+/** Exact obsolete session family (root + helpers) or credential namespace. Invalidate its DB epoch first. */
+export type SandboxNativeStateCleanupRequest = {
+  /** Original non-secret installation namespace. Rotation must never silently skip old data. */
+  expectedInstallationId: string;
+} & (
+  | { sessionScope: NonNullable<SandboxProcessRequest["sessionScope"]>; credentialScope?: never }
+  | { credentialScope: NonNullable<SandboxProcessRequest["credentialScope"]>; sessionScope?: never }
+);
 
 /** A private bidirectional subprocess; terminate must destroy its entire process tree. */
 export interface SandboxProcessHandle {
@@ -442,6 +461,9 @@ export interface AgentRunModel {
   provider: string;
   id: string;
   apiKey?: string;
+  authScheme?: "api-key" | "bearer";
+  modelRoles?: ExecutionModelRoles;
+  nativeLogin?: NativeLoginDescriptor;
   /** Cloudflare account id stored with a gateway BYOK credential. */
   accountId?: string;
   /** Cloudflare AI Gateway id stored with a gateway BYOK credential. */
@@ -613,6 +635,8 @@ export type AgentRuntimeEvent =
   | { type: "done"; text?: string };
 
 export interface AgentRuntimeCapabilities {
+  /** Whether this runtime/auth mode supports mediated helper agents. */
+  delegatedAgents?: boolean;
   streaming: boolean;
   compaction: boolean;
   tools: boolean;

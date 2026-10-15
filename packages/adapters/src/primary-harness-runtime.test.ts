@@ -8,7 +8,7 @@ import type {
   SandboxProcessRequest,
   SandboxProvider,
 } from "@rakazo/adapter-kit";
-import { EXECUTION_HARNESS_VERSIONS } from "@rakazo/contracts";
+import { EXECUTION_HARNESS_VERSIONS, nativeLoginEndpoint } from "@rakazo/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { approvalPausedToolResult } from "./approval-effect.js";
 import { NativeEventQueue } from "./primary-harness-protocol.js";
@@ -197,6 +197,15 @@ function fixture(harness: PrimaryHarness, calls: ToolCall[] = []) {
                 }
               : { userAgent: "codex_cli_rs/0.162.1" },
         });
+      } else if (message.method === "account/read") {
+        frame({
+          id: message.id,
+          result: {
+            account: { type: "chatgpt", email: "owner@example.invalid", planType: "plus" },
+          },
+        });
+      } else if (message.method === "authenticate") {
+        frame({ id: message.id, result: {} });
       } else if (message.method === "session/new" || message.method === "session/resume") {
         activeNativeId = p.sessionId ?? nativeId;
         frame({ id: message.id, result: { sessionId: activeNativeId } });
@@ -290,6 +299,7 @@ describe.each<PrimaryHarness>(["claude", "codex", "kimi"])("%s primary harness",
       profileRevision: 1,
       accountId: "account",
       epoch: "epoch",
+      parentEpoch: "epoch",
     });
     expect(JSON.stringify(f.sent)).not.toContain("fake-key");
     expect(JSON.stringify(f.sent)).not.toContain("server-private-route");
@@ -593,6 +603,90 @@ describe("native helper approval continuation", () => {
       );
       const completed = Object.values(JSON.parse(checkpoint).helpers)[0] as { result?: string };
       expect(completed.result).toBe("Verified.");
+    },
+  );
+});
+
+describe("native managed account runtime boundary", () => {
+  function native(harness: "codex" | "kimi", calls: ToolCall[] = []) {
+    const f = fixture(harness, calls);
+    f.options.nativeLogin = true;
+    f.options.computer.id = f.options.computer.providerRef;
+    f.options.sandbox.nativeStateInstallationId = () => "a".repeat(32);
+    const request = input();
+    request.model.apiKey = undefined;
+    request.model.nativeLogin = {
+      kind: "native_login",
+      harness,
+      installationId: "a".repeat(32),
+      connectionId: "11111111-1111-4111-8111-111111111111",
+      epoch: "22222222-2222-4222-8222-222222222222",
+      computerId: "db-computer",
+      computerProviderRef: f.options.computer.providerRef,
+      computerHomeKey: f.options.computer.botId,
+      spaceId: f.options.context.spaceId,
+      region: "global",
+      state: "ready",
+    };
+    request.model.provider = `native-${harness}`;
+    request.model.baseUrl = nativeLoginEndpoint(request.model.nativeLogin);
+    request.tools = [
+      ...request.tools,
+      {
+        name: "run_subagent",
+        description: "Delegate",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ];
+    return { ...f, request };
+  }
+  it.each(["codex", "kimi"] as const)(
+    "%s uses only the scoped private account and binds native checkpoints",
+    async (harness) => {
+      const f = native(harness, [{ name: "read_file", args: { path: "note.md" } }]);
+      const runtime = createPrimaryHarnessRuntime(f.options);
+      expect(runtime.describe().capabilities.delegatedAgents).toBe(false);
+      const output = await collect(runtime, f.request);
+      expect(output.at(-1)?.type).toBe("done");
+      const launch = f.startProcess.mock.calls[0]?.[1];
+      expect(launch?.env).toEqual({});
+      expect(launch?.credentialScope).toEqual({
+        harness,
+        connectionId: f.request.model.nativeLogin?.connectionId,
+        epoch: f.request.model.nativeLogin?.epoch,
+      });
+      expect(f.sent.some((frame) => JSON.stringify(frame).includes('"name":"run_subagent"'))).toBe(
+        false,
+      );
+      const checkpoint = output.find((event) => event.type === "checkpoint");
+      expect(checkpoint?.type).toBe("checkpoint");
+      if (checkpoint?.type === "checkpoint")
+        expect(JSON.parse(checkpoint.blob).credentialEpoch).toBe(
+          f.request.model.nativeLogin?.epoch,
+        );
+    },
+  );
+  it("rejects forged helpers rather than sharing native refresh credentials", async () => {
+    const f = native("codex", [{ name: "run_subagent", args: { task: "do work" } }]);
+    await expect(collect(createPrimaryHarnessRuntime(f.options), f.request)).rejects.toThrow(
+      "Helpers are unavailable with native sign-in",
+    );
+    expect(f.startProcess).toHaveBeenCalledTimes(1);
+    expect(f.request.executeTool).not.toHaveBeenCalled();
+  });
+  it.each(["endpoint", "api-key", "provider", "installation", "computer", "state", "mode"])(
+    "rejects changed %s before launching",
+    async (kind) => {
+      const f = native("codex");
+      if (kind === "endpoint") f.request.model.baseUrl = "https://example.invalid/v1";
+      if (kind === "api-key") f.request.model.apiKey = "fake-forbidden-overlay";
+      if (kind === "provider") f.request.model.provider = "openai";
+      if (kind === "installation") f.request.model.nativeLogin!.installationId = "b".repeat(32);
+      if (kind === "computer") f.request.model.nativeLogin!.computerProviderRef = "another";
+      if (kind === "state") f.request.model.nativeLogin!.state = "pending";
+      if (kind === "mode") f.options.nativeLogin = false;
+      await expect(collect(createPrimaryHarnessRuntime(f.options), f.request)).rejects.toThrow();
+      expect(f.startProcess).not.toHaveBeenCalled();
     },
   );
 });

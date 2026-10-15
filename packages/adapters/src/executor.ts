@@ -4,6 +4,7 @@ import type {
   AgentContextStrategy,
   AgentHomeStore,
   AgentModelOAuthCredential,
+  AgentRunModel,
   AgentRunRequest,
   AgentRuntime,
   AgentToolCompletion,
@@ -116,6 +117,7 @@ import {
   parseComputerMode,
   readHistory,
   recordUsage,
+  resolveExecutionHandover,
   resolveRunExecutionProfile,
   retireModelCredential,
   SpaceLimitError,
@@ -2656,6 +2658,7 @@ export interface ExecutorDeps {
   runtime: AgentRuntime;
   /** Opt-in; disabling never silently reroutes an existing native profile to Pi. */
   primaryHarnessesEnabled?: boolean;
+  nativeLoginSelfHosted?: boolean;
   sandbox: SandboxProvider;
   memory: MemoryStore;
   memoryProviders: MemoryProviderResolver;
@@ -3327,10 +3330,20 @@ export function createRunExecutor(deps: ExecutorDeps) {
           runId,
           botId: run.botId,
           resumeHeldLease,
+          // Explicit profiles serialize shared checkout access; legacy Pi peers remain concurrent.
+          exclusive: run.executionProfileSnapshot != null,
         });
       } catch (error) {
         if (!(error instanceof ComputerBusyError)) throw error;
-        await requeueComputerRun(deps, runId, workerId, fence, resumeCheckpoint, heldForTakeover);
+        await requeueComputerRun(
+          deps,
+          runId,
+          workerId,
+          fence,
+          resumeCheckpoint,
+          heldForTakeover,
+          error.message,
+        );
         return;
       }
       const attempt = await deps.prisma.attempt
@@ -3478,6 +3491,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           },
         );
         const executionProfile = profileBinding?.profile;
+        const executionHandover = await resolveExecutionHandover(deps.prisma, run);
         const configuredHarness = executionProfile
           ? ExecutionHarnessSchema.parse(executionProfile.harness)
           : "pi";
@@ -3775,6 +3789,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
           return;
         }
         if (
+          nativeHarness &&
+          !/^[a-f0-9]{32}$/.test(deps.sandbox.nativeStateInstallationId?.() ?? "")
+        ) {
+          await failRunBeforeModel(
+            "This sandbox cannot safely isolate native account and session state.",
+          );
+          return;
+        }
+        if (
           profileBinding?.snapshot.computerId &&
           profileBinding.snapshot.computerId !== bot.computerId
         ) {
@@ -3799,7 +3822,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
         }
         // An incompatible saved model is a configuration error. Record it on the run.
         // Leaving it for the setup catch would retry and replace the message.
-        let resolved: Awaited<ReturnType<typeof resolveModelKey>>;
+        let resolved: Awaited<ReturnType<typeof resolveModelKey>> &
+          Pick<AgentRunModel, "nativeLogin">;
         try {
           if (nativeHarness && profileBinding) {
             if (!profileBinding.profile.endpoint)
@@ -3814,6 +3838,29 @@ export function createRunExecutor(deps: ExecutorDeps) {
               profileBinding.profile,
               profileBinding.credential,
             );
+            if (nativeModel.model.nativeLogin) {
+              const account = nativeModel.model.nativeLogin;
+              if (!deps.nativeLoginSelfHosted)
+                throw new Error("Native login is disabled on this deployment.");
+              if (account.installationId !== deps.sandbox.nativeStateInstallationId?.())
+                throw new Error(
+                  "Native login installation identity changed. Reconnect the account.",
+                );
+              if (
+                account.computerId !== bot.computerId ||
+                account.computerHomeKey !== bot.computer?.homeKey ||
+                account.computerProviderRef !== bot.computer?.providerRef ||
+                bot.computer?.kind !== "docker"
+              )
+                throw new Error(
+                  "Native login computer identity has changed. Reconnect the account.",
+                );
+              if (
+                account.harness === "kimi" &&
+                (run.routineId || !["user", "messaging"].includes(run.trigger))
+              )
+                throw new Error("Kimi native login is available only for interactive user turns.");
+            }
             if (
               profileBinding.profile.inputModalities?.includes("image") &&
               knownModelImageCapability({
@@ -3824,6 +3871,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             )
               throw new Error("This profile's model does not support image input.");
             resolved = {
+              nativeLogin: nativeModel.model.nativeLogin,
               apiKey: nativeModel.model.apiKey,
               baseUrl: nativeModel.model.baseUrl,
               maxTokens: nativeModel.model.maxTokens,
@@ -6730,11 +6778,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
             };
             const nativeSession = await claimNativeHarnessSession(deps.prisma, {
               ...sessionScope,
+              installationId: deps.sandbox.nativeStateInstallationId?.(),
               startNewSession: run.trigger === "user" || run.trigger === "messaging",
             });
             nativeSessionScope = sessionScope;
             primaryRuntime = createPrimaryHarnessRuntime({
               harness: nativeHarness,
+              nativeLogin: Boolean(resolved.nativeLogin),
               runtimeVersion: executionProfile.runtimeVersion,
               protocol: ExecutionProtocolSchema.parse(executionProfile.protocol),
               sandbox: deps.sandbox,
@@ -6754,6 +6804,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 });
               },
             });
+          }
+          if (profileBinding) {
             let checking = false;
             const timer = setInterval(() => {
               if (checking || context.signal.aborted) return;
@@ -6794,33 +6846,36 @@ export function createRunExecutor(deps: ExecutorDeps) {
               },
               prompt,
               contextStrategy,
-              instructions: userTurnInstructions({
-                botInstructions: runIdentityInstruction(bot, run.trigger),
-                groupContext,
-                messagingContext,
-                redactedMemoryContext: memoryContext
-                  ? redactSecrets(memoryContext, runSecrets)
-                  : undefined,
-                redactedScratchpadContext: scratchpadContext
-                  ? redactSecrets(scratchpadContext, runSecrets)
-                  : undefined,
-                redactedTicketContext: ticketContext
-                  ? redactSecrets(ticketContext, runSecrets)
-                  : undefined,
-                hasHistoricalContext: historicalContext.length > 0,
-                historyRetrievalEnabled: contextStrategy !== "current",
-                computerInstruction,
-                pageBrowserAllowed,
-                taskCatalogInstruction,
-                workspaceInstruction,
-                agentEnvironmentInstruction,
-                botDirectory,
-                pluginLine,
-                agentSkillsLine,
-                taughtSkillsLine,
-                replyGuidance: runReplyGuidance(run.trigger),
-                disabledBuiltinTools,
-              })
+              instructions: [
+                executionHandover?.summary,
+                ...userTurnInstructions({
+                  botInstructions: runIdentityInstruction(bot, run.trigger),
+                  groupContext,
+                  messagingContext,
+                  redactedMemoryContext: memoryContext
+                    ? redactSecrets(memoryContext, runSecrets)
+                    : undefined,
+                  redactedScratchpadContext: scratchpadContext
+                    ? redactSecrets(scratchpadContext, runSecrets)
+                    : undefined,
+                  redactedTicketContext: ticketContext
+                    ? redactSecrets(ticketContext, runSecrets)
+                    : undefined,
+                  hasHistoricalContext: historicalContext.length > 0,
+                  historyRetrievalEnabled: contextStrategy !== "current",
+                  computerInstruction,
+                  pageBrowserAllowed,
+                  taskCatalogInstruction,
+                  workspaceInstruction,
+                  agentEnvironmentInstruction,
+                  botDirectory,
+                  pluginLine,
+                  agentSkillsLine,
+                  taughtSkillsLine,
+                  replyGuidance: runReplyGuidance(run.trigger),
+                  disabledBuiltinTools,
+                }),
+              ]
                 .filter((instruction): instruction is string => Boolean(instruction))
                 .join("\n\n"),
               history: runtimeHistory,
@@ -6830,7 +6885,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
               model: {
                 provider: runModelProvider,
                 id: runModelId,
+                nativeLogin: resolved.nativeLogin,
                 apiKey: resolved.oauth ? undefined : resolved.apiKey,
+                authScheme: profileBinding?.snapshot.authScheme,
+                modelRoles: profileBinding?.snapshot.modelRoles,
                 ...cloudflareRunFields(resolved),
                 baseUrl: resolved.baseUrl,
                 cacheCapabilities: resolved.cacheCapabilities,
@@ -6896,12 +6954,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
               allowSilentEmpty: allowSilentEmptyRun,
               emptyResponseText,
               executeTool: scripted ? undefined : applyTool,
-              resolveModel: scripted
-                ? undefined
-                : (provider, modelId) =>
-                    resolveConnectedModel(run, provider, modelId, (values) =>
-                      runSecrets.push(...values),
-                    ),
+              resolveModel:
+                scripted || executionProfile
+                  ? undefined
+                  : (provider, modelId) =>
+                      resolveConnectedModel(run, provider, modelId, (values) =>
+                        runSecrets.push(...values),
+                      ),
               onToolCompleted: (completion) =>
                 appendToolCompletionAudit(
                   deps,
@@ -8443,6 +8502,7 @@ async function requeueComputerRun(
   fence: number,
   resumeCheckpoint: TakeoverResumeCheckpoint | null,
   heldForTakeover = false,
+  error: string | null = null,
 ): Promise<void> {
   const released = await writeComputerRunRequeue(
     deps,
@@ -8451,6 +8511,7 @@ async function requeueComputerRun(
     fence,
     resumeCheckpoint,
     heldForTakeover,
+    error,
   );
   if (!released) return;
   await deps.jobs.enqueue({
@@ -8873,7 +8934,8 @@ async function resolveModelKey(
                 const current = parseModelSecret(
                   await deps.secretStore.load(currentRow.ciphertext, currentRow.id),
                 );
-                if (current.kind === "oauth") {
+                if (current.kind !== "oauth") return;
+                {
                   const stored = current.credential;
                   if (stored.expires > next.expires) return;
                   if (

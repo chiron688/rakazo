@@ -178,16 +178,37 @@ const isolatedProcesses = new IsolatedProcessManager(
 );
 app.route(
   "/computers",
-  isolatedProcessRoutes(isolatedProcesses, (identity, launch) =>
-    withComputerScreenLock(identity.computerId, async () => {
-      const { info } = await managedContainer(
-        identity.computerId,
-        identity.computerBotId,
-        identity.spaceId,
-      );
-      if (!info.State.Running) throw new Error("Computer is not running.");
-      return launch();
-    }),
+  isolatedProcessRoutes(
+    isolatedProcesses,
+    (identity, launch) =>
+      withComputerScreenLock(identity.computerId, async () => {
+        const { info } = await managedContainer(
+          identity.computerId,
+          identity.computerBotId,
+          identity.spaceId,
+        );
+        if (!info.State.Running) throw new Error("Computer is not running.");
+        return launch();
+      }),
+    (identity, cleanup) =>
+      withComputerScreenLock(identity.computerId, async () => {
+        try {
+          await managedContainer(identity.computerId, identity.computerBotId, identity.spaceId);
+        } catch (error) {
+          // Exact private scope remains verifiable after the team computer disappears.
+          // Other Docker/identity errors never grant cleanup authority.
+          if (
+            !(
+              error &&
+              typeof error === "object" &&
+              "statusCode" in error &&
+              error.statusCode === 404
+            )
+          )
+            throw error;
+        }
+        await cleanup();
+      }),
   ),
 );
 
@@ -995,23 +1016,42 @@ app.post("/computers/:id/stop", async (c) => {
 app.delete("/computers/:id", async (c) => {
   const id = c.req.param("id");
   const botId = c.req.header("x-rakazo-bot-id");
+  const spaceId = c.req.header("x-rakazo-space-id");
   try {
-    if (!botId) throw new Error("missing computer identity");
+    if (!botId || !spaceId) throw new ComputerIdentityError("missing computer identity");
     return await withBotLifecycleLock(botId, async () => {
-      const { container } = await managedContainer(id, botId, c.req.header("x-rakazo-space-id"));
+      let managed: Awaited<ReturnType<typeof managedContainer>>;
+      try {
+        managed = await managedContainer(id, botId, spaceId);
+      } catch (error) {
+        if (
+          !(error && typeof error === "object" && "statusCode" in error && error.statusCode === 404)
+        )
+          throw error;
+        // A stale DELETE must not destroy sessions belonging to a replacement computer.
+        // Provision shares the bot lock; the screen lock waits for any already
+        // authorized launch on the missing container before session removal.
+        return withComputerScreenLock(id, async () => {
+          if (await findBotContainer(botId, spaceId))
+            return c.json({ error: "computer was replaced; refresh before deleting" }, 409);
+          await isolatedProcesses.destroyComputer(botId, spaceId);
+          return c.json({ ok: true });
+        });
+      }
       await withComputerScreenLock(id, async () => {
         await isolatedProcesses.stopComputer(id);
-        await isolatedProcesses.destroyComputer(botId);
-        await container.remove({ force: true }).catch(() => undefined);
+        // The live container independently authenticates ownership of legacy volumes.
+        await isolatedProcesses.destroyComputer(botId, spaceId, true);
+        await managed.container.remove({ force: true });
         clearComputerScreenRegistry(computerScreens, computerScreenBoots, id);
       });
-      if (screenNetworkMode !== "internal") {
-        await removeBotNetwork(botId);
-      }
+      if (screenNetworkMode !== "internal") await removeBotNetwork(botId);
       return c.json({ ok: true });
     });
-  } catch {
-    return c.json({ error: "computer not found" }, 404);
+  } catch (error) {
+    if (error instanceof ComputerIdentityError)
+      return c.json({ error: "invalid computer identity" }, 403);
+    return c.json({ error: "computer cleanup failed" }, 503);
   }
 });
 

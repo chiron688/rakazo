@@ -12,7 +12,9 @@ import { createRunExecutor } from "./executor.js";
 import type * as RemoteMcpModule from "./remote-mcp.js";
 
 const mocks = vi.hoisted(() => ({
+  acquire: vi.fn(async () => null),
   binding: vi.fn(),
+  handover: vi.fn(),
   claim: vi.fn(),
   checkpoint: vi.fn(),
   nativeRun: vi.fn(),
@@ -25,13 +27,14 @@ vi.mock("@rakazo/logging", () => ({
 vi.mock("@rakazo/db", async (original) => ({
   ...(await original<typeof DbModule>()),
   resolveRunExecutionProfile: mocks.binding,
+  resolveExecutionHandover: mocks.handover,
   claimNativeHarnessSession: mocks.claim,
   updateNativeHarnessSession: mocks.checkpoint,
 }));
 vi.mock("./primary-harness-runtime.js", () => ({ createPrimaryHarnessRuntime: mocks.factory }));
 vi.mock("./computer-lifecycle.js", async (original) => ({
   ...(await original<typeof ComputerLifecycleModule>()),
-  acquireComputerExecutionLease: vi.fn(async () => null),
+  acquireComputerExecutionLease: mocks.acquire,
   releaseComputerExecutionLease: vi.fn(async () => undefined),
   provisionComputer: vi.fn(async () => ({ id: "computer-A", kind: "docker", botId: "bot-A" })),
 }));
@@ -182,7 +185,10 @@ function fixture(enabled = true, effects: Effect[] = []) {
     jobs: { enqueue: vi.fn(async () => undefined) },
     secrets: [],
     secretStore: { load: vi.fn(async () => "fake-profile-key") },
-    sandbox: { describe: () => ({ capabilities: { graphical: false } }) },
+    sandbox: {
+      describe: () => ({ capabilities: { graphical: false } }),
+      nativeStateInstallationId: () => "a".repeat(32),
+    },
     browser: { describe: () => ({ capabilities: { page: false } }) },
   } as unknown as Parameters<typeof createRunExecutor>[0];
   return {
@@ -199,6 +205,7 @@ function fixture(enabled = true, effects: Effect[] = []) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.handover.mockResolvedValue(null);
   mocks.binding.mockResolvedValue({
     profile: {
       id: "profile-A",
@@ -292,6 +299,24 @@ async function attachedMedia(kind: "image" | "audio") {
 }
 
 describe("executor primary harness routing", () => {
+  it.each([false, true])(
+    "requests exclusive checkout access only for a pinned profile (%s)",
+    async (pinned) => {
+      const f = fixture();
+      if (!pinned) Reflect.set(f.run, "executionProfileSnapshot", null);
+      await f.executor.continueRun("run-A", "worker-A");
+      expect(mocks.acquire).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          computerId: "computer-A",
+          botId: "bot-A",
+          runId: "run-A",
+          exclusive: pinned,
+        }),
+      );
+    },
+  );
+
   it.each(["image", "audio"] as const)(
     "hydrates scoped %s bytes directly into the selected native request",
     async (kind) => {
@@ -646,4 +671,211 @@ describe("executor primary harness routing", () => {
       expect.objectContaining({ outcome: "failed", error: expect.stringContaining("disabled") }),
     );
   });
+});
+
+async function piFixture() {
+  const f = fixture();
+  const binding = await mocks.binding();
+  Object.assign(binding.profile, {
+    harness: "pi",
+    provider: "openai-compatible",
+    modelId: "custom-model",
+    protocol: "openai-chat-completions",
+    runtimeVersion: EXECUTION_HARNESS_VERSIONS.pi,
+    authScheme: "api-key",
+    modelRoles: {},
+  });
+  binding.credential.provider = "openai-compatible";
+  vi.mocked(f.deps.secretStore.load).mockResolvedValue(
+    JSON.stringify({
+      kind: "openai_compatible",
+      baseUrl: binding.profile.endpoint,
+      apiKey: "fake-exact-account-key",
+    }),
+  );
+  f.piRun.mockImplementation(async function* () {
+    yield { type: "done" };
+  });
+  return { ...f, binding };
+}
+
+describe("explicit Pi account isolation", () => {
+  it("pins the same-provider account and gives helpers no alternate-account resolver", async () => {
+    const f = await piFixture();
+    await f.executor.continueRun("run-A", "worker-A");
+    expect(f.finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
+    const request = f.piRun.mock.calls[0]?.[0] as AgentRunRequest;
+    expect(request.model.apiKey).toBe("fake-exact-account-key");
+    expect(request.resolveModel).toBeUndefined();
+    expect(request.resolveFallbackModel).toBeUndefined();
+    expect(request.fallbackModels).toEqual([]);
+    expect(f.prisma.secret!.findFirst).toHaveBeenCalledWith({
+      where: { id: "secret-A", userId: "user-A", spaceId: null },
+    });
+    expect(mocks.factory).not.toHaveBeenCalled();
+  });
+  it("supplies explicit handover instructions when returning to Pi", async () => {
+    const f = await piFixture();
+    mocks.handover.mockResolvedValue({
+      previousHarness: "codex",
+      currentHarness: "pi",
+      summary: "Execution handover: codex to pi. Preserve unfinished work.",
+    });
+    await f.executor.continueRun("run-A", "worker-A");
+    expect(f.piRun.mock.calls[0]?.[0].instructions).toContain("Execution handover: codex to pi");
+  });
+  it("aborts a tool-free Pi stream when its exact account is revoked", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = await piFixture();
+      let enter!: () => void;
+      const started = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      let signal: AbortSignal | undefined;
+      f.piRun.mockImplementation(async function* (_request, context) {
+        signal = context.signal;
+        enter();
+        await new Promise<void>((resolve) =>
+          context.signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+        context.signal.throwIfAborted();
+      });
+      const running = f.executor.continueRun("run-A", "worker-A");
+      await started;
+      mocks.binding.mockRejectedValueOnce(new Error("Account was revoked"));
+      await vi.advanceTimersByTimeAsync(2001);
+      await running;
+      expect(signal?.aborted).toBe(true);
+      expect(f.finalizeRun).not.toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "completed" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+async function nativeLoginFixture() {
+  const f = fixture();
+  const binding = await mocks.binding();
+  const account = {
+    kind: "native_login",
+    harness: "codex",
+    installationId: "a".repeat(32),
+    connectionId: "11111111-1111-4111-8111-111111111111",
+    epoch: "22222222-2222-4222-8222-222222222222",
+    computerId: "computer-A",
+    computerProviderRef: "container-A",
+    computerHomeKey: "home-A",
+    spaceId: "space-A",
+    state: "ready",
+    region: "global",
+  };
+  Object.assign(binding.profile, {
+    harness: "codex",
+    provider: "native-codex",
+    protocol: "openai-responses",
+    runtimeVersion: EXECUTION_HARNESS_VERSIONS.codex,
+    endpoint: "https://chatgpt.com/backend-api/codex",
+    computerId: "computer-A",
+    authScheme: "api-key",
+    modelRoles: {},
+  });
+  binding.credential.provider = "native-codex";
+  const bot = await f.prisma.bot!.findUniqueOrThrow();
+  f.prisma.bot!.findUniqueOrThrow.mockResolvedValue({
+    ...(bot as object),
+    computerId: "computer-A",
+    computer: {
+      id: "computer-A",
+      scope: "dedicated",
+      kind: "docker",
+      providerRef: "container-A",
+      homeKey: "home-A",
+    },
+  });
+  f.deps.nativeLoginSelfHosted = true;
+  vi.mocked(f.deps.secretStore.load).mockImplementation(async () => JSON.stringify(account));
+  return { ...f, account, binding };
+}
+
+describe("executor native-login boundary", () => {
+  it("passes its descriptor through the selected native runtime without an API key", async () => {
+    const f = await nativeLoginFixture();
+    await f.executor.continueRun("run-A", "worker-A");
+    expect(f.finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
+    expect(mocks.factory).toHaveBeenCalledWith(
+      expect.objectContaining({ nativeLogin: true, harness: "codex" }),
+    );
+    const model = mocks.nativeRun.mock.calls[0]?.[0].model;
+    expect(model.nativeLogin).toEqual(f.account);
+    expect(model.apiKey).toBeUndefined();
+    expect(f.piRun).not.toHaveBeenCalled();
+  });
+  it.each(["disabled", "installation", "home", "container", "missing-namespace"])(
+    "fails closed before launching a %s native account",
+    async (failure) => {
+      const f = await nativeLoginFixture();
+      if (failure === "disabled") f.deps.nativeLoginSelfHosted = false;
+      if (failure === "installation") f.account.installationId = "b".repeat(32);
+      if (failure === "home") f.account.computerHomeKey = "other-home";
+      if (failure === "container") f.account.computerProviderRef = "other-container";
+      if (failure === "missing-namespace") f.deps.sandbox.nativeStateInstallationId = undefined;
+      await f.executor.continueRun("run-A", "worker-A");
+      expect(f.finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed" }));
+      expect(mocks.factory).not.toHaveBeenCalled();
+      expect(f.piRun).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["routine", "bot_message", "follow_up", "webhook"])(
+    "rejects native Kimi %s automation",
+    async (trigger) => {
+      const f = await nativeLoginFixture();
+      f.run.trigger = trigger;
+      f.account.harness = "kimi";
+      Object.assign(f.binding.profile, {
+        harness: "kimi",
+        provider: "native-kimi",
+        protocol: "openai-chat-completions",
+        runtimeVersion: EXECUTION_HARNESS_VERSIONS.kimi,
+        endpoint: "https://api.kimi.ai/coding/v1",
+      });
+      f.binding.credential.provider = "native-kimi";
+      await f.executor.continueRun("run-A", "worker-A");
+      expect(f.finalizeRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outcome: "failed",
+          error: expect.stringContaining("interactive"),
+        }),
+      );
+      expect(mocks.factory).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("pinned profile background routing", () => {
+  it.each(["bot_message", "routine"])(
+    "uses the receiving bot native profile for %s without a Pi wrapper",
+    async (trigger) => {
+      const f = fixture();
+      f.run.trigger = trigger;
+      const binding = await mocks.binding();
+      binding.profile.harness = "codex";
+      binding.profile.protocol = "openai-responses";
+      binding.profile.runtimeVersion = EXECUTION_HARNESS_VERSIONS.codex;
+      await f.executor.continueRun("run-A", "worker-A");
+      expect(f.finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
+      expect(mocks.factory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          harness: "codex",
+          accountId: "account-A",
+          profileId: "profile-A",
+          context: expect.objectContaining({ botId: "bot-A", runId: "run-A" }),
+        }),
+      );
+      expect(mocks.nativeRun.mock.calls[0]?.[0].model.apiKey).toBe("fake-profile-key");
+      expect(f.piRun).not.toHaveBeenCalled();
+    },
+  );
 });

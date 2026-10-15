@@ -225,7 +225,9 @@ msgstr ""
 msgid "Access token (optional)"
 msgstr "Token de acceso (opcional)"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/AccountSettingsOverlay.tsx
+#: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Account"
 msgstr "Cuenta"
@@ -242,6 +244,11 @@ msgstr "ID de cuenta"
 #: src/pages/PluginsOverlay.tsx
 msgid "Account label"
 msgstr ""
+
+#: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
+msgid "Account name"
+msgstr "Nombre de la cuenta"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Accounts"
@@ -307,6 +314,10 @@ msgstr "Agrega un nombre de servidor."
 msgid "Add a stdio command."
 msgstr "Agrega un comando stdio."
 
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Add account…"
+msgstr "Añadir cuenta…"
+
 #: src/pages/McpServersOverlay.tsx
 msgid "Add an HTTPS server URL."
 msgstr "Agrega una URL de servidor HTTPS."
@@ -364,6 +375,10 @@ msgstr "Agregar servidor"
 msgid "Add server URL"
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Add signed-in account"
+msgstr "Añadir cuenta con sesión"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Add to routine"
 msgstr "Agregar a la rutina"
@@ -393,6 +408,7 @@ msgstr "Agregando…"
 #: src/pages/RoutineEditor.tsx
 #: src/pages/RoutineSchedule.tsx
 #: src/pages/shell/bot-panel.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Advanced"
 msgstr "Avanzado"
 
@@ -483,6 +499,10 @@ msgstr "Siempre permitido"
 msgid "An API key is stored for this provider, not a subscription sign-in."
 msgstr "Hay una clave de API guardada para este proveedor, no un inicio de sesión por suscripción."
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "An available Linux Docker computer is required."
+msgstr "Se requiere un equipo Linux Docker disponible."
+
 #: src/components/AskCard.tsx
 msgid "Answer"
 msgstr "Responder"
@@ -513,6 +533,7 @@ msgstr "La API volvió, pero la actualización no terminó. Revisa los logs del 
 #: src/lib/localized-provider-hint.ts
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "API key"
 msgstr "Clave de API"
@@ -624,6 +645,10 @@ msgstr "Archivo adjunto"
 msgid "Authentication failed."
 msgstr "Error de autenticación."
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Authentication header"
+msgstr "Cabecera de autenticación"
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 msgid "Authorization code or callback URL"
@@ -703,6 +728,7 @@ msgstr ""
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Bearer token"
 msgstr "Token Bearer"
 
@@ -803,6 +829,7 @@ msgstr "No se puede alcanzar el servidor."
 #: src/pages/Artifacts.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
@@ -822,6 +849,10 @@ msgstr "Cancelar nuevo grupo"
 #: src/pages/shell/chat-context.tsx
 msgid "Cancel reply"
 msgstr "Cancelar respuesta"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Cancel sign-in"
+msgstr "Cancelar inicio de sesión"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Canceled"
@@ -933,9 +964,17 @@ msgstr "Elige una contraseña nueva"
 msgid "Choose account"
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Choose computer"
+msgstr "Elegir equipo"
+
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Choose file"
 msgstr "Elegir archivo"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Choose model"
+msgstr "Elegir modelo"
 
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Choose provider"
@@ -1096,6 +1135,7 @@ msgstr ""
 msgid "Complete"
 msgstr "Completado"
 
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/Shell.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -1172,8 +1212,8 @@ msgid "Connect a provider to add backups."
 msgstr "Conecta un proveedor para agregar modelos de respaldo."
 
 #: src/pages/shell/execution-profile-settings.tsx
-msgid "Connect an API account in Models first."
-msgstr ""
+msgid "Connect an account in Models first."
+msgstr "Primero conecta una cuenta en Modelos."
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Connect API key"
@@ -1203,6 +1243,7 @@ msgstr "Conectar Treg"
 #: src/pages/McpOAuthCallback.tsx
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/shell/message-cards.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Connected"
@@ -1308,6 +1349,10 @@ msgstr "No se pudo cambiar la contraseña"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Could not change the default model"
 msgstr "No se pudo cambiar el modelo predeterminado"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not check sign-in. Try reconnecting."
+msgstr "No se pudo comprobar la sesión. Vuelve a conectar."
 
 #: src/lib/model-connection-preflight.ts
 msgid "Could not check stored credentials."
@@ -1416,6 +1461,10 @@ msgstr ""
 msgid "Could not delete this artifact."
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not disconnect account"
+msgstr "No se pudo desconectar la cuenta"
+
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "Could not disconnect memory provider"
 msgstr "No se pudo desconectar el proveedor de memoria"
@@ -1515,6 +1564,10 @@ msgstr "No se pudieron cargar los servidores MCP"
 msgid "Could not load model settings"
 msgstr "No se pudo cargar la configuración de modelos"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Could not load models"
+msgstr "No se pudieron cargar los modelos"
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Could not load run history"
 msgstr "No se pudo cargar el historial de ejecuciones"
@@ -1523,6 +1576,10 @@ msgstr "No se pudo cargar el historial de ejecuciones"
 #: src/pages/Auth.tsx
 msgid "Could not load sign-in options"
 msgstr "No se pudieron cargar las opciones de inicio de sesión"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not load signed-in accounts"
+msgstr "No se pudieron cargar las cuentas con sesión"
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not load skill"
@@ -1595,6 +1652,10 @@ msgstr "No se pudo quitar la regla"
 #: src/pages/shell/bot-credentials.tsx
 msgid "Could not remove the credential"
 msgstr ""
+
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Could not rename account"
+msgstr "No se pudo renombrar la cuenta"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not rename connection"
@@ -1693,6 +1754,10 @@ msgstr "No se pudo enviar eso"
 #: src/pages/McpServersOverlay.tsx
 msgid "Could not start OAuth"
 msgstr "No se pudo iniciar OAuth"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Could not start sign-in"
+msgstr "No se pudo iniciar la sesión"
 
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Could not start teaching"
@@ -1893,6 +1958,10 @@ msgstr "Predeterminado ({0})"
 msgid "Default scope"
 msgstr "Alcance predeterminado"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Delegated agents are unavailable for signed-in accounts."
+msgstr "Los agentes delegados no están disponibles para cuentas con sesión."
+
 #: src/pages/Artifacts.tsx
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
@@ -1991,6 +2060,7 @@ msgstr ""
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Disconnect"
 msgstr "Desconectar"
@@ -1998,6 +2068,10 @@ msgstr "Desconectar"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Disconnect {disconnectName}?"
 msgstr ""
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Disconnect {logoutName}?"
+msgstr "¿Desconectar {logoutName}?"
 
 #. placeholder {0}: selected.providerName ?? selected.provider
 #: src/pages/ModelSettingsOverlay.tsx
@@ -2165,10 +2239,6 @@ msgstr "Introduce una clave de API antes de probar."
 msgid "Environment"
 msgstr ""
 
-#: src/pages/shell/execution-profile-settings.tsx
-msgid "Environment: Bot computer"
-msgstr ""
-
 #: src/lib/roster-status.ts
 #: src/pages/Shell.tsx
 msgid "Error"
@@ -2207,6 +2277,7 @@ msgstr "Cada mes"
 msgid "Every week"
 msgstr "Cada semana"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Execution profile"
 msgstr ""
@@ -2305,6 +2376,10 @@ msgstr "Buscando…"
 msgid "Finish signing in at <0>{0}</0>. The final page may not load; paste its URL or code here."
 msgstr "Termina de iniciar sesión en <0>{0}</0>. Es posible que la página final no cargue; pega aquí su URL o código."
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Finish signing in in your browser:"
+msgstr "Completa el inicio de sesión en tu navegador:"
+
 #: src/lib/model-connection-preflight.ts
 msgid "Finish subscription sign-in, then test again."
 msgstr "Termina el inicio de sesión por suscripción y vuelve a probar."
@@ -2372,10 +2447,18 @@ msgstr ""
 msgid "Git event"
 msgstr "Evento de Git"
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Global"
+msgstr "Global"
+
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/Shell.tsx
 msgid "Group"
 msgstr "Grupo"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Group handoffs remain available."
+msgstr "Los traspasos en grupo siguen disponibles."
 
 #: src/pages/GroupPanel.tsx
 msgid "Group settings"
@@ -2401,6 +2484,8 @@ msgstr "Cuelga primero y luego ingresa el código en pantalla."
 msgid "Hang up, then enter the code on screen."
 msgstr "Cuelga y luego ingresa el código en pantalla."
 
+#: src/components/RunExecutionProfileDetails.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/shell/execution-profile-settings.tsx
 msgid "Harness"
 msgstr ""
@@ -2732,6 +2817,10 @@ msgstr ""
 msgid "Lowercase letters, numbers, hyphens and underscores, starting with a letter."
 msgstr ""
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Mainland China"
+msgstr "China continental"
+
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Make sure nothing is still running on this computer."
 msgstr "Asegúrate de que no quede nada en ejecución en este ordenador."
@@ -2912,6 +3001,7 @@ msgstr "minuto"
 msgid "minutes"
 msgstr "minutos"
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/RoutineEditor.tsx
@@ -2932,8 +3022,13 @@ msgstr ""
 msgid "Model accepts uploaded audio"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Model for {role}"
+msgstr "Modelo para {role}"
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Model id"
 msgstr "ID del modelo"
 
@@ -3025,6 +3120,10 @@ msgstr "Nombra este grupo"
 #: src/pages/RoutineEditor.tsx
 msgid "Name this routine"
 msgstr "Nombra esta rutina"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Native sign-in"
+msgstr "Inicio de sesión nativo"
 
 #: src/lib/roster-status.ts
 msgid "Needs an answer"
@@ -3385,6 +3484,7 @@ msgstr "Mensaje original no disponible"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Other model…"
 msgstr "Otro modelo…"
 
@@ -3446,6 +3546,11 @@ msgstr "Pega tu clave de API y vuelve a probar."
 msgid "Paused"
 msgstr "En pausa"
 
+#: src/pages/NativeLoginSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Personal interactive chats only."
+msgstr "Solo chats interactivos personales."
+
 #: src/pages/Shell.tsx
 #: src/pages/shell/chat-context.tsx
 msgid "Photo"
@@ -3500,6 +3605,11 @@ msgstr ""
 msgid "Private"
 msgstr "Privado"
 
+#: src/pages/NativeLoginSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Private computer"
+msgstr "Equipo privado"
+
 #: src/pages/shell/dialogs.tsx
 msgid "Private workspace with its own bots and groups."
 msgstr ""
@@ -3520,6 +3630,7 @@ msgstr ""
 msgid "Protocol"
 msgstr ""
 
+#: src/components/RunExecutionProfileDetails.tsx
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/shell/execution-profile-settings.tsx
@@ -3571,6 +3682,10 @@ msgstr ""
 #: src/pages/ActivityList.tsx
 msgid "Recent"
 msgstr "Recientes"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Reconnect"
+msgstr "Volver a conectar"
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Reconnect OAuth"
@@ -3651,6 +3766,10 @@ msgstr "Actualizar vista"
 msgid "Refreshing…"
 msgstr "Actualizando…"
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Region"
+msgstr "Región"
+
 #: src/lib/user-error.ts
 msgid "Registration is closed"
 msgstr "El registro está cerrado"
@@ -3722,9 +3841,17 @@ msgstr "Eliminado junto con el chat, la computadora y la memoria."
 msgid "Removed, but list refresh failed"
 msgstr "Eliminado, pero falló la actualización de la lista"
 
+#: src/pages/NativeLoginSettings.tsx
+msgid "Removes this sign-in from Rakazo. Provider sessions may remain active."
+msgstr "Elimina esta sesión de Rakazo. Las sesiones del proveedor pueden seguir activas."
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Removing…"
 msgstr "Quitando…"
+
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Rename"
+msgstr "Renombrar"
 
 #: src/pages/BotContextMenu.tsx
 #: src/pages/Shell.tsx
@@ -3893,6 +4020,10 @@ msgstr ""
 msgid "Run at"
 msgstr "Ejecutar a las"
 
+#: src/components/RunExecutionProfileDetails.tsx
+msgid "Run details"
+msgstr "Detalles de ejecución"
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Run history"
 msgstr "Historial de ejecuciones"
@@ -3944,10 +4075,6 @@ msgstr "Guardar respaldos"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Save credential"
-msgstr ""
-
-#: src/pages/ModelSettingsOverlay.tsx
-msgid "Save limits"
 msgstr ""
 
 #: src/pages/shell/bot-credentials.tsx
@@ -4199,6 +4326,7 @@ msgstr ""
 #: src/lib/localized-provider-hint.ts
 #: src/pages/Auth.tsx
 #: src/pages/ModelSettingsOverlay.tsx
+#: src/pages/NativeLoginSettings.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/Welcome.tsx
 msgid "Sign in"
@@ -4226,6 +4354,22 @@ msgstr "Inicia sesión con la suscripción o prueba la clave de API."
 #: src/pages/Welcome.tsx
 msgid "Sign up"
 msgstr "Registrarse"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Sign-in did not complete"
+msgstr "El inicio de sesión no se completó"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Sign-in expired"
+msgstr "El inicio de sesión caducó"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Sign-in page unavailable"
+msgstr "Página de inicio de sesión no disponible"
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Signed out"
+msgstr "Sesión cerrada"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Site"
@@ -4419,6 +4563,11 @@ msgstr "Enseñanza en curso: detén la enseñanza antes de enviar un nuevo mensa
 msgid "Team"
 msgstr "Equipo"
 
+#: src/pages/NativeLoginSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Team computer"
+msgstr "Ordenador del equipo"
+
 #: src/pages/Shell.tsx
 msgid "Team Computer"
 msgstr "Team Computer"
@@ -4490,6 +4639,10 @@ msgstr "Pensando"
 msgid "Thinking: {activeThinkingLabel}"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "This account’s protocol is not supported by execution profiles."
+msgstr "Los perfiles de ejecución no admiten el protocolo de esta cuenta."
+
 #: src/pages/Shell.tsx
 msgid "This bot runs on this computer, not a Linux desktop. Shell and files use your home folder."
 msgstr "Este bot se ejecuta en esta computadora, no en un escritorio Linux. El shell y los archivos usan tu carpeta de inicio."
@@ -4518,6 +4671,10 @@ msgstr ""
 #: src/components/ArtifactFileCard.tsx
 msgid "This file is not valid UTF-8 text."
 msgstr ""
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "This is my personal, self-hosted deployment."
+msgstr "Esta es mi instalación personal autoalojada."
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "this Mac"
@@ -4828,6 +4985,10 @@ msgstr ""
 #: src/pages/shell/bot-credentials.tsx
 msgid "Values are encrypted and never shown again."
 msgstr "Los valores se cifran y no vuelven a mostrarse."
+
+#: src/pages/NativeLoginSettings.tsx
+msgid "Verification code"
+msgstr "Código de verificación"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Verify and add"

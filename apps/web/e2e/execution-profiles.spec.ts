@@ -16,6 +16,8 @@ const profile: ExecutionProfile = {
   protocol: "anthropic",
   endpoint: "https://api.example.test",
   modelId: "test-model",
+  authScheme: "api-key",
+  modelRoles: {},
   inputModalities: ["image"],
   computerId: null,
   createdAt: "2026-10-01T00:00:00.000Z",
@@ -32,6 +34,9 @@ for (const viewport of [
     let revoked = false;
     await page.route("**/rpc/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("nativeLogins/list"))
+        return route.fulfill({ json: { json: { enabled: false, accounts: [], computers: [] } } });
+      if (path.endsWith("executionProfiles/models")) return route.fulfill({ json: { json: [] } });
       if (path.endsWith("executionProfiles/list"))
         return route.fulfill({ json: { json: created ? [profile] : [] } });
       if (path.endsWith("models/credentials"))
@@ -67,6 +72,8 @@ for (const viewport of [
           harness: "claude",
           protocol: "anthropic",
           computerId: null,
+          authScheme: "api-key",
+          modelRoles: {},
           inputModalities: ["image"],
         });
         created = true;
@@ -104,6 +111,12 @@ for (const viewport of [
       "delegated agents",
     );
     await captureScreenshot(page, testInfo, `execution-profile-selected-${viewport.name}`);
+    await page.getByRole("button", { name: "New revision", exact: true }).click();
+    await form.getByText("Advanced", { exact: true }).click();
+    await form.getByLabel("Authentication header", { exact: true }).selectOption("bearer");
+    await form.getByLabel("Model for sonnet", { exact: true }).fill("review-model");
+    await captureScreenshot(page, testInfo, `execution-profile-revision-${viewport.name}`);
+    await form.getByRole("button", { name: "Cancel", exact: true }).click();
     revoked = true;
     await page.reload();
     await page.getByText("Advanced", { exact: true }).click();
@@ -113,6 +126,24 @@ for (const viewport of [
     await page.getByLabel("Execution profile", { exact: true }).selectOption("");
     await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.getByTestId("execution-profile-effective")).toHaveCount(0);
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", viewport.width);
+  });
+}
+
+for (const viewport of [
+  { name: "desktop", width: 1100, height: 1000 },
+  { name: "narrow-web", width: 390, height: 844 },
+]) {
+  test(`run details keep historical account attribution (${viewport.name})`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/e2e/fixtures/execution-profiles.html?offline&run-details");
+    await page.getByRole("button", { name: "Run details", exact: true }).click();
+    await expect(page.getByText("Earlier review · v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("Original account", { exact: true })).toBeVisible();
+    await expect(page.getByText("review-model", { exact: true })).toBeVisible();
+    await captureScreenshot(page, testInfo, `execution-run-attribution-${viewport.name}`);
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", viewport.width);
   });
 }

@@ -56,6 +56,7 @@ import type {
   PortableFile,
   ProcessEvent,
   SandboxCapabilities,
+  SandboxNativeStateCleanupRequest,
   SandboxProcessHandle,
   SandboxProcessRequest,
   ScreenRequest,
@@ -121,6 +122,14 @@ export interface SandboxProvider {
     request: SandboxProcessRequest,
     context: AdapterContext,
   ): Promise<SandboxProcessHandle>;
+  /** Non-secret current namespace identity; persist it before allocating any private state. */
+  nativeStateInstallationId?(): string;
+  /** Remove one obsolete private namespace. Refuses active leases; never routes to a host shell. */
+  cleanupNativeState?(
+    computer: ComputerRef,
+    request: SandboxNativeStateCleanupRequest,
+    context: AdapterContext,
+  ): Promise<void>;
   inspectBackgroundWork?(
     computer: ComputerRef,
     markerId: string,

@@ -170,6 +170,8 @@ describe("mediated native helpers", () => {
       "read_file",
       "write_file",
       "request_secret",
+      "ask_user",
+      "request_takeover",
     ]);
     expect(f.options.onCheckpoint).not.toHaveBeenCalled();
     expect(f.abort).toHaveBeenCalledWith("parent-run");
@@ -341,7 +343,7 @@ describe("mediated native helpers", () => {
       yield event;
       yield { type: "done" };
     });
-    await expect(f.helper.run(args, "call")).rejects.toThrow("user control");
+    await expect(f.helper.run(args, "call")).rejects.toThrow("durable checkpoint");
     expect(f.emitted.some((value) => value.type === "ask" || value.type === "takeover")).toBe(
       false,
     );
@@ -531,4 +533,128 @@ describe("mediated native helpers", () => {
     expect(JSON.stringify(failed.emitted)).not.toContain("fake-secret-provider-error");
     expect(failed.emitted.at(-1)).toMatchObject({ status: "failed", result: "Helper failed." });
   });
+});
+
+it.each([
+  {
+    type: "ask",
+    text: "Which file?",
+    actions: [
+      { id: "a", label: "One" },
+      { id: "b", label: "Two" },
+    ],
+  },
+  { type: "takeover", reason: "Confirm the browser dialog" },
+] as AgentRuntimeEvent[])("persists and resumes helper input: $type", async (event) => {
+  const first = setup(async function* (_request, options) {
+    await options.onCheckpoint!("child-input-checkpoint");
+    yield event;
+    yield { type: "done" };
+  });
+  await expect(first.helper.run(args, "first-native-id")).rejects.toBeInstanceOf(
+    NativeHarnessPaused,
+  );
+  expect(first.emitted).toContainEqual(event);
+  expect([...first.states.values()][0]).toMatchObject({
+    checkpoint: "child-input-checkpoint",
+    waitingForInput: true,
+  });
+  const resumed = setup(async function* (request, options) {
+    expect(options.nativeCheckpoint).toBe("child-input-checkpoint");
+    expect(request.instructions).toContain("The user selected Two.");
+    expect(request.history).toEqual([]);
+    yield { type: "done", text: "Finished after input" };
+  }, first.states);
+  resumed.request.prompt = "The user selected Two.";
+  await expect(resumed.helper.run(args, "changed-native-id")).resolves.toBe("Finished after input");
+  expect([...resumed.states.values()][0]?.waitingForInput).toBe(false);
+});
+
+it.each([
+  { type: "ask", text: "Which file?" },
+  { type: "takeover", reason: "Confirm the browser dialog" },
+] as AgentRuntimeEvent[])(
+  "preserves pending input when a concurrent child checkpoint arrives: $type",
+  async (event) => {
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let savingInput!: () => void;
+    const inputStarted = new Promise<void>((resolve) => {
+      savingInput = resolve;
+    });
+    const first = setup(async function* (_request, options) {
+      await options.onCheckpoint!("initial-child-checkpoint");
+      yield event;
+    });
+    first.saveState.mockImplementation(async (key, state) => {
+      if (state.waitingForInput && state.checkpoint === "initial-child-checkpoint") {
+        savingInput();
+        await barrier;
+      }
+      first.states.set(key, structuredClone(state));
+    });
+    const paused = expect(first.helper.run(args, "first-native-id")).rejects.toBeInstanceOf(
+      NativeHarnessPaused,
+    );
+    await inputStarted;
+    // The runtime persists its pause checkpoint independently of the event consumer.
+    const checkpoint = first.created[0]!.options.onCheckpoint!("latest-child-checkpoint");
+    await Promise.resolve();
+    expect(first.saveState).toHaveBeenCalledTimes(3);
+    expect(first.emitted).not.toContainEqual(event);
+    release();
+    await Promise.all([checkpoint, paused]);
+    expect([...first.states.values()][0]).toMatchObject({
+      checkpoint: "latest-child-checkpoint",
+      waitingForInput: true,
+    });
+    expect(first.emitted).toContainEqual(event);
+
+    const resumed = setup(async function* (request, options) {
+      expect(options.nativeCheckpoint).toBe("latest-child-checkpoint");
+      expect(request.instructions).toContain("The user selected Two.");
+      yield { type: "done", text: "Finished after input" };
+    }, first.states);
+    resumed.request.prompt = "The user selected Two.";
+    await expect(resumed.helper.run(args, "changed-native-id")).resolves.toBe(
+      "Finished after input",
+    );
+    expect([...resumed.states.values()][0]?.waitingForInput).toBe(false);
+  },
+);
+
+it("does not apply queued state transformations after an input persistence failure", async () => {
+  let rejectSave!: (error: Error) => void;
+  const barrier = new Promise<void>((_resolve, reject) => {
+    rejectSave = reject;
+  });
+  let savingInput!: () => void;
+  const inputStarted = new Promise<void>((resolve) => {
+    savingInput = resolve;
+  });
+  const first = setup(async function* (_request, options) {
+    await options.onCheckpoint!("durable-child-checkpoint");
+    yield { type: "ask", text: "Which file?" };
+  });
+  first.saveState.mockImplementation(async (key, state) => {
+    if (state.waitingForInput) {
+      savingInput();
+      await barrier;
+    }
+    first.states.set(key, structuredClone(state));
+  });
+  const failed = expect(first.helper.run(args, "native-id")).rejects.toThrow("Lease lost");
+  await inputStarted;
+  const checkpoint = expect(
+    first.created[0]!.options.onCheckpoint!("uncommitted-child-checkpoint"),
+  ).rejects.toThrow("Lease lost");
+  rejectSave(new Error("Lease lost"));
+  await Promise.all([checkpoint, failed]);
+  expect(first.saveState).toHaveBeenCalledTimes(3);
+  expect([...first.states.values()][0]).toMatchObject({ checkpoint: "durable-child-checkpoint" });
+  expect([...first.states.values()][0]?.waitingForInput).toBeUndefined();
+  expect(first.emitted.some((event) => event.type === "ask")).toBe(false);
+  expect(first.abort).toHaveBeenCalled();
 });

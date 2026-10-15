@@ -116,6 +116,7 @@ function fixture() {
       resolveHostname: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
     },
     events: { notify: vi.fn().mockResolvedValue(undefined) },
+    secrets: { load: vi.fn().mockResolvedValue("fake-selected-key") },
   } as unknown as RouterDeps;
   const client = createRouterClient(createRouter(deps), { context: { actor } as never });
   return { prisma, bot, deps, client };
@@ -133,7 +134,11 @@ describe("execution profile API", () => {
         inputModalities: ["image"],
       }),
     ).rejects.toThrow("does not support image input");
-    expect(prisma.userModelCredential.findFirst).not.toHaveBeenCalled();
+    expect(prisma.userModelCredential.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "account-a", userId: "owner", provider: "openrouter" },
+      }),
+    );
     expect(prisma.executionProfile.create).not.toHaveBeenCalled();
   });
 
@@ -152,6 +157,7 @@ describe("execution profile API", () => {
     expect(created.id).toBe("profile-new");
     expect(prisma.userModelCredential.findFirst).toHaveBeenCalledWith({
       where: { id: "account-a", userId: "owner", provider: "anthropic" },
+      include: { preferences: { where: { spaceId: "space", userId: "owner" } } },
     });
     const data = prisma.executionProfile.create.mock.calls[0]![0].data;
     expect(data).toMatchObject({ spaceId: "space", userId: "owner", revision: 1 });
@@ -173,7 +179,7 @@ describe("execution profile API", () => {
     const { prisma, client } = fixture();
     prisma.userModelCredential.findFirst.mockResolvedValue(null);
     await expect(client.executionProfiles.create(input)).rejects.toMatchObject({
-      code: "BAD_REQUEST",
+      code: "NOT_FOUND",
     });
     expect(prisma.executionProfile.create).not.toHaveBeenCalled();
     await expect(

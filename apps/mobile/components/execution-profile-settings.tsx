@@ -1,9 +1,19 @@
-import type { ExecutionInputModality, ExecutionProfile, ModelCredential } from "@rakazo/contracts";
+import type {
+  ExecutionInputModality,
+  ExecutionProfile,
+  ExecutionProfileModel,
+  ModelCredential,
+  NativeLoginAccount,
+  NativeLoginComputer,
+  NativeLoginList,
+} from "@rakazo/contracts";
 import {
   CreateExecutionProfileInput,
+  EXECUTION_HARNESS_LABELS,
   EXECUTION_HARNESS_PROTOCOLS,
   EXECUTION_HARNESS_VERSIONS,
   NATIVE_EXECUTION_CAPABILITIES,
+  OPENAI_COMPATIBLE_PROVIDER_ID,
   supportedExecutionInputModalities,
 } from "@rakazo/contracts";
 import type { ReactNode } from "react";
@@ -19,12 +29,6 @@ import { NativeSwitch } from "./native-switch";
 
 type Harness = ExecutionProfile["harness"];
 type Protocol = ExecutionProfile["protocol"];
-const harnessLabels: Record<Harness, string> = {
-  pi: "Pi",
-  claude: "Claude Agent",
-  codex: "Codex",
-  kimi: "Kimi Code",
-};
 
 export function ExecutionProfileSettings({
   value,
@@ -39,6 +43,8 @@ export function ExecutionProfileSettings({
   const tokens = useMobileTokens();
   const [profiles, setProfiles] = useState<ExecutionProfile[]>([]);
   const [credentials, setCredentials] = useState<ModelCredential[]>([]);
+  const [nativeAccounts, setNativeAccounts] = useState<NativeLoginAccount[]>([]);
+  const [computers, setComputers] = useState<NativeLoginComputer[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [refresh, setRefresh] = useState(0);
@@ -56,6 +62,14 @@ export function ExecutionProfileSettings({
   const [modelId, setModelId] = useState("");
   const [inputModalities, setInputModalities] = useState<ExecutionInputModality[]>([]);
   const [supersedesId, setSupersedesId] = useState<string>();
+  const [computerId, setComputerId] = useState<string | null>(null);
+  const [authScheme, setAuthScheme] = useState<"api-key" | "bearer">("api-key");
+  const [modelRoles, setModelRoles] = useState<ExecutionProfile["modelRoles"]>({});
+  const [modelOptions, setModelOptions] = useState<ExecutionProfileModel[]>([]);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [modelsError, setModelsError] = useState(false);
+  const [modelRefresh, setModelRefresh] = useState(0);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const active = useRef(true);
 
   useEffect(() => {
@@ -72,11 +86,14 @@ export function ExecutionProfileSettings({
     void Promise.all([
       rpc<ExecutionProfile[]>("executionProfiles/list"),
       rpc<ModelCredential[]>("models/credentials"),
+      rpc<NativeLoginList>("nativeLogins/list"),
     ])
-      .then(([nextProfiles, nextCredentials]) => {
+      .then(([nextProfiles, nextCredentials, nativeLogins]) => {
         if (!current) return;
         setProfiles(nextProfiles);
         setCredentials(nextCredentials);
+        setNativeAccounts(nativeLogins.accounts);
+        setComputers(nativeLogins.computers);
         setLoaded(true);
       })
       .catch(() => {
@@ -86,6 +103,31 @@ export function ExecutionProfileSettings({
       current = false;
     };
   }, [refresh]);
+
+  useEffect(() => {
+    let current = true;
+    setModelOptions([]);
+    setModelsLoaded(false);
+    setModelsError(false);
+    if (!creating || !credentialId) return;
+    void rpc<ExecutionProfileModel[]>("executionProfiles/models", { harness, credentialId })
+      .then((models) => {
+        if (!current) return;
+        setModelOptions(models);
+        setModelsLoaded(true);
+        if (harness === "pi" && models.length) {
+          setProtocol(
+            models.find((entry) => entry.id === modelId)?.protocol ?? models[0]!.protocol,
+          );
+        }
+      })
+      .catch(() => {
+        if (current) setModelsError(true);
+      });
+    return () => {
+      current = false;
+    };
+  }, [harness, credentialId, creating, modelRefresh]);
 
   const selected =
     profiles.find((profile) => profile.id === value) ??
@@ -107,16 +149,44 @@ export function ExecutionProfileSettings({
         .map((kind) => inputLabels[kind])
         .join(", ")
     : "";
+  const knownModel = modelOptions.find((entry) => entry.id === modelId);
+  const allowCustomModel = harness !== "pi" || provider === OPENAI_COMPATIBLE_PROVIDER_ID;
   const creatableInputs = supportedExecutionInputModalities({
     harness,
     protocol,
     runtimeVersion,
     endpoint: endpoint.trim() || null,
-  });
-  const account = credentials.find((credential) => credential.id === selected?.credentialId);
-  const availableCredentials = credentials.filter(
-    (credential) => credential.hasKey && credential.authKind !== "oauth",
+  }).filter((kind) => !knownModel || knownModel.inputModalities.includes(kind));
+  const signedInCredentials: ModelCredential[] = nativeAccounts.map((account) => ({
+    id: account.credentialId,
+    provider: `native-${account.harness}`,
+    label: account.label,
+    hasKey: account.state.state === "ready",
+    isDefault: false,
+    baseUrl: account.endpoint,
+  }));
+  const account = [...credentials, ...signedInCredentials].find(
+    (credential) => credential.id === selected?.credentialId,
   );
+  const selectedUsesNativeLogin =
+    selected?.provider === "native-codex" || selected?.provider === "native-kimi";
+  const chosenNativeAccount = nativeAccounts.find(
+    (account) => account.credentialId === credentialId,
+  );
+  function computerLabel(computer: NativeLoginComputer): string {
+    return computer.scope === "team"
+      ? t("Team computer")
+      : computer.botName || t("Private computer");
+  }
+
+  const availableCredentials = [
+    ...credentials.filter(
+      (credential) => credential.hasKey && (harness === "pi" || credential.authKind !== "oauth"),
+    ),
+    ...signedInCredentials.filter(
+      (credential) => credential.hasKey && credential.provider === `native-${harness}`,
+    ),
+  ];
   const providers = [...new Set(availableCredentials.map((credential) => credential.provider))];
   const accounts = availableCredentials.filter((credential) => credential.provider === provider);
   const chosenAccount = accounts.find((credential) => credential.id === credentialId);
@@ -127,6 +197,8 @@ export function ExecutionProfileSettings({
       provider &&
       chosenAccount &&
       modelId.trim() &&
+      (harness !== "pi" ||
+        (modelsLoaded && (knownModel || (allowCustomModel && modelOptions.length > 0)))) &&
       (harness === "pi" || endpoint.trim()),
   );
   const choices = [
@@ -136,7 +208,7 @@ export function ExecutionProfileSettings({
       : []),
     ...profiles.map((profile) => ({
       key: profile.id,
-      label: `${profile.name} · ${harnessLabels[profile.harness]} · v${profile.revision}`,
+      label: `${profile.name} · ${EXECUTION_HARNESS_LABELS[profile.harness]} · v${profile.revision}`,
     })),
   ];
 
@@ -149,6 +221,9 @@ export function ExecutionProfileSettings({
     setModelId("");
     setInputModalities([]);
     setSupersedesId(undefined);
+    setComputerId(null);
+    setAuthScheme("api-key");
+    setModelRoles({});
     setError(null);
   }
 
@@ -165,7 +240,9 @@ export function ExecutionProfileSettings({
       modelId,
       inputModalities,
       ...(supersedesId ? { supersedesId } : {}),
-      computerId: null,
+      computerId,
+      authScheme,
+      modelRoles,
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? t("Check the profile fields"));
@@ -177,7 +254,7 @@ export function ExecutionProfileSettings({
     try {
       const profile = await rpc<ExecutionProfile>("executionProfiles/create", parsed.data);
       if (!active.current) return;
-      setProfiles((current) => [...current, profile]);
+      setProfiles((current) => [...current.filter((entry) => entry.id !== profile.id), profile]);
       onChange(profile.id);
       resetForm();
     } catch (err) {
@@ -237,7 +314,10 @@ export function ExecutionProfileSettings({
       {selected ? (
         <View testID="execution-profile-effective">
           {[
-            [t("Harness"), `${harnessLabels[selected.harness]} · ${selected.runtimeVersion}`],
+            [
+              t("Harness"),
+              `${EXECUTION_HARNESS_LABELS[selected.harness]} · ${selected.runtimeVersion}`,
+            ],
             [t("Provider"), selected.provider],
             [t("Protocol"), selected.protocol],
             [t("Model"), selected.modelId],
@@ -250,30 +330,31 @@ export function ExecutionProfileSettings({
             </Text>
           ))}
           {unsupportedVersion ? (
-            <>
-              <Text accessibilityRole="alert" style={{ ...detailStyle, color: tokens.destructive }}>
-                {t("Unsupported runtime version. Create a new revision.")}
-              </Text>
-              <NativeActionButton
-                label={t("New revision")}
-                prominence="plain"
-                disabled={!loaded || pending}
-                onPress={() => {
-                  setName(selected.name);
-                  setHarness(selected.harness);
-                  setProtocol(selected.protocol);
-                  setProvider(selected.provider);
-                  setCredentialId(selected.credentialId);
-                  setEndpoint(selected.endpoint ?? "");
-                  setModelId(selected.modelId);
-                  setInputModalities([]);
-                  setSupersedesId(selected.id);
-                  setError(null);
-                  setCreating(true);
-                }}
-              />
-            </>
+            <Text accessibilityRole="alert" style={{ ...detailStyle, color: tokens.destructive }}>
+              {t("Unsupported runtime version. Create a new revision.")}
+            </Text>
           ) : null}
+          <NativeActionButton
+            label={t("New revision")}
+            prominence="plain"
+            disabled={!loaded || pending || creating}
+            onPress={() => {
+              setName(selected.name);
+              setHarness(selected.harness);
+              setProtocol(selected.protocol);
+              setProvider(selected.provider);
+              setCredentialId(selected.credentialId);
+              setEndpoint(selected.endpoint ?? "");
+              setModelId(selected.modelId);
+              setInputModalities(unsupportedVersion ? [] : (selected.inputModalities ?? []));
+              setComputerId(selected.computerId);
+              setAuthScheme(selected.authScheme ?? "api-key");
+              setModelRoles(selected.modelRoles ?? {});
+              setSupersedesId(selected.id);
+              setError(null);
+              setCreating(true);
+            }}
+          />
           {selected.harness !== "pi" &&
           NATIVE_EXECUTION_CAPABILITIES.requiresRestrictedLinuxDocker ? (
             <Text style={detailStyle}>{t("Requires an enabled Linux Docker runtime.")}</Text>
@@ -290,6 +371,15 @@ export function ExecutionProfileSettings({
           ) : null}
           {nativeProfile && !nativeProfile.inputModalities?.includes("audio") ? (
             <Text style={detailStyle}>{t("Live calls use transcripts.")}</Text>
+          ) : null}
+          {selectedUsesNativeLogin ? (
+            <Text style={detailStyle}>
+              {t("Delegated agents are unavailable for signed-in accounts.")}{" "}
+              {t("Group handoffs remain available.")}
+            </Text>
+          ) : null}
+          {selected?.provider === "native-kimi" ? (
+            <Text style={detailStyle}>{t("Personal interactive chats only.")}</Text>
           ) : null}
           {loaded && !account?.hasKey ? (
             <Text accessibilityRole="alert" style={{ ...detailStyle, color: tokens.destructive }}>
@@ -327,10 +417,15 @@ export function ExecutionProfileSettings({
             <MenuPicker
               label={t("Harness")}
               value={harness}
-              choices={Object.entries(harnessLabels).map(([key, label]) => ({ key, label }))}
+              choices={Object.entries(EXECUTION_HARNESS_LABELS).map(([key, label]) => ({
+                key,
+                label,
+              }))}
               onChange={(key) => {
                 const next = key as Harness;
                 setHarness(next);
+                setAuthScheme("api-key");
+                setModelRoles({});
                 setProtocol(EXECUTION_HARNESS_PROTOCOLS[next][0]);
                 setProvider("");
                 setCredentialId("");
@@ -363,18 +458,24 @@ export function ExecutionProfileSettings({
                 setInputModalities([]);
               }}
             />
-            <MenuPicker
-              label={t("Protocol")}
-              value={protocol}
-              choices={EXECUTION_HARNESS_PROTOCOLS[harness].map((key) => ({ key, label: key }))}
-              onChange={(key) => {
-                setProtocol(key as Protocol);
-                setCredentialId("");
-                setEndpoint("");
-                setModelId("");
-                setInputModalities([]);
-              }}
-            />
+            {harness === "pi" ? (
+              <Text style={detailStyle}>
+                {t("Protocol")}: {protocol}
+              </Text>
+            ) : (
+              <MenuPicker
+                label={t("Protocol")}
+                value={protocol}
+                choices={EXECUTION_HARNESS_PROTOCOLS[harness].map((key) => ({ key, label: key }))}
+                onChange={(key) => {
+                  setProtocol(key as Protocol);
+                  setCredentialId("");
+                  setEndpoint("");
+                  setModelId("");
+                  setInputModalities([]);
+                }}
+              />
+            )}
             <MenuPicker
               label={t("Account")}
               value={credentialId}
@@ -385,45 +486,137 @@ export function ExecutionProfileSettings({
               onChange={(key) => {
                 const next = accounts.find((account) => account.id === key);
                 setCredentialId(key);
-                setEndpoint(next?.baseUrl ?? "");
+                const signedIn = nativeAccounts.find((account) => account.credentialId === key);
+                setComputerId(
+                  signedIn?.computerId ?? (supersedesId ? (selected?.computerId ?? null) : null),
+                );
+                setEndpoint(
+                  harness === "pi" && provider !== OPENAI_COMPATIBLE_PROVIDER_ID
+                    ? ""
+                    : (next?.baseUrl ?? ""),
+                );
                 setModelId(next?.modelId ?? "");
                 setInputModalities([]);
               }}
             />
             {!availableCredentials.length ? (
-              <Text style={detailStyle}>{t("Connect an API account in Models first.")}</Text>
+              <Text style={detailStyle}>{t("Connect an account in Models first.")}</Text>
             ) : null}
-            {field(
-              t("Model"),
-              <TextInput
-                accessibilityLabel={t("Model")}
-                style={inputStyle}
-                value={modelId}
-                onChangeText={(value) => {
-                  setModelId(value);
+            {modelOptions.length ? (
+              <MenuPicker
+                label={t("Model")}
+                value={knownModel ? modelId : ""}
+                choices={[
+                  { key: "", label: allowCustomModel ? t("Other model…") : t("Choose model") },
+                  ...modelOptions.map((entry) => ({ key: entry.id, label: entry.label })),
+                ]}
+                onChange={(key) => {
+                  const next = modelOptions.find((entry) => entry.id === key);
+                  setModelId(key);
+                  if (harness === "pi" && next) setProtocol(next.protocol);
                   setInputModalities([]);
                 }}
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!pending}
-              />,
-            )}
-            {field(
-              harness === "pi" ? t("Endpoint (optional)") : t("Endpoint"),
-              <TextInput
-                accessibilityLabel={harness === "pi" ? t("Endpoint (optional)") : t("Endpoint")}
-                style={inputStyle}
-                value={endpoint}
-                onChangeText={(value) => {
-                  setEndpoint(value);
-                  setInputModalities([]);
-                }}
-                keyboardType="url"
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!pending}
-              />,
-            )}
+              />
+            ) : null}
+            {allowCustomModel && !knownModel
+              ? field(
+                  modelOptions.length ? t("Model id") : t("Model"),
+                  <TextInput
+                    accessibilityLabel={modelOptions.length ? t("Model id") : t("Model")}
+                    style={inputStyle}
+                    value={modelId}
+                    onChangeText={(value) => {
+                      setModelId(value);
+                      setInputModalities([]);
+                    }}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!pending}
+                  />,
+                )
+              : null}
+            {modelsError ? (
+              <>
+                <Text
+                  accessibilityRole="alert"
+                  style={{ ...detailStyle, color: tokens.destructive }}
+                >
+                  {t("Could not load models")}
+                </Text>
+                <NativeActionButton
+                  label={t("Retry")}
+                  prominence="plain"
+                  onPress={() => setModelRefresh((value) => value + 1)}
+                />
+              </>
+            ) : null}
+            {harness === "pi" && credentialId && modelsLoaded && !modelOptions.length ? (
+              <Text accessibilityRole="alert" style={{ ...detailStyle, color: tokens.destructive }}>
+                {t("This account’s protocol is not supported by execution profiles.")}
+              </Text>
+            ) : null}
+            {harness !== "pi" || provider === OPENAI_COMPATIBLE_PROVIDER_ID
+              ? field(
+                  harness === "pi" ? t("Endpoint (optional)") : t("Endpoint"),
+                  <TextInput
+                    accessibilityLabel={harness === "pi" ? t("Endpoint (optional)") : t("Endpoint")}
+                    style={inputStyle}
+                    value={endpoint}
+                    onChangeText={(value) => {
+                      setEndpoint(value);
+                      setInputModalities([]);
+                    }}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!pending && !chosenNativeAccount}
+                  />,
+                )
+              : null}
+            {harness === "claude" ? (
+              <>
+                <NativeActionButton
+                  label={t("Advanced")}
+                  prominence="plain"
+                  onPress={() => setShowAdvanced((value) => !value)}
+                />
+                {showAdvanced ? (
+                  <>
+                    <MenuPicker
+                      label={t("Authentication header")}
+                      value={authScheme}
+                      choices={[
+                        { key: "api-key", label: t("API key") },
+                        { key: "bearer", label: t("Bearer token") },
+                      ]}
+                      onChange={(value) => setAuthScheme(value as "api-key" | "bearer")}
+                    />
+                    {(["haiku", "sonnet", "opus", "fable", "subagent"] as const).map((role) => (
+                      <View key={role}>
+                        {field(
+                          role,
+                          <TextInput
+                            accessibilityLabel={t("Model for {role}", { role })}
+                            style={inputStyle}
+                            value={modelRoles[role] ?? ""}
+                            placeholder={modelId}
+                            onChangeText={(value) =>
+                              setModelRoles((current) => ({
+                                ...current,
+                                [role]: value.trim() || undefined,
+                              }))
+                            }
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            editable={!pending}
+                          />,
+                        )}
+                      </View>
+                    ))}
+                  </>
+                ) : null}
+              </>
+            ) : null}
             {harness !== "pi" && modelId.trim()
               ? creatableInputs.map((kind) => {
                   const label =
@@ -457,7 +650,23 @@ export function ExecutionProfileSettings({
                   );
                 })
               : null}
-            <Text style={detailStyle}>{t("Environment: Bot computer")}</Text>
+            <View pointerEvents={chosenNativeAccount ? "none" : "auto"}>
+              <MenuPicker
+                label={t("Environment")}
+                value={computerId ?? ""}
+                choices={[
+                  { key: "", label: t("Bot computer") },
+                  ...(computerId && !computers.some((computer) => computer.id === computerId)
+                    ? [{ key: computerId, label: t("Pinned computer") }]
+                    : []),
+                  ...computers.map((computer) => ({
+                    key: computer.id,
+                    label: computerLabel(computer),
+                  })),
+                ]}
+                onChange={(key) => setComputerId(key || null)}
+              />
+            </View>
           </View>
           {error ? (
             <Text accessibilityRole="alert" style={{ ...detailStyle, color: tokens.destructive }}>

@@ -61,6 +61,7 @@ import {
   piSessionsRoot,
   reconcileCloudAgents,
   reconcileComputerUpdates,
+  reconcileNativeStateCleanup,
   removePiUserSessions,
   ScriptedAgentRuntime,
   SmtpEmailProvider,
@@ -454,6 +455,7 @@ export async function createApp(
   const codexCatalog = new CodexCatalogCache();
   const executor = createRunExecutor({
     primaryHarnessesEnabled: process.env.PRIMARY_HARNESSES_ENABLED === "true",
+    nativeLoginSelfHosted: process.env.PRIMARY_HARNESS_NATIVE_LOGIN_MODE === "self-hosted-personal",
     contextStrategy,
     prisma,
     runtime,
@@ -526,11 +528,15 @@ export async function createApp(
         notifications,
         reconcileCloudAgents: () => reconcileCloudAgents({ prisma, jobs, cloudAgent }),
         reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
+        reconcileNativeStateCleanup: () => reconcileNativeStateCleanup({ prisma, sandbox }),
       })
     : undefined;
   reconciler?.start();
 
   const router = createRouter({
+    nativeLoginSelfHosted:
+      process.env.PRIMARY_HARNESSES_ENABLED === "true" &&
+      process.env.PRIMARY_HARNESS_NATIVE_LOGIN_MODE === "self-hosted-personal",
     cloudAgent,
     codexCatalog,
     prisma,

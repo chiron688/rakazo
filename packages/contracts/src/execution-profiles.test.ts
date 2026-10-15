@@ -195,3 +195,42 @@ it("publishes pinned attribution without exposing internal scope or secret refer
   expect(JSON.stringify(summary)).not.toContain("private-");
   expect(summary).not.toHaveProperty("credentialId");
 });
+
+describe("immutable Claude connection settings", () => {
+  it("defaults historical profiles to API-key auth and no role overrides", () => {
+    expect(CreateExecutionProfileInput.parse(input)).toMatchObject({
+      authScheme: "api-key",
+      modelRoles: {},
+    });
+  });
+  it("accepts allowlisted role names and documented model identifiers", () => {
+    const profile = CreateExecutionProfileInput.parse({
+      ...input,
+      authScheme: "bearer",
+      modelRoles: { haiku: " glm-5.3[1m] ", subagent: "namespace/model" },
+    });
+    expect(profile.modelRoles).toEqual({ haiku: "glm-5.3[1m]", subagent: "namespace/model" });
+  });
+  it.each([
+    { shell: "model" },
+    { haiku: "model\nHOST_SECRET=x" },
+    { opus: "" },
+    { sonnet: "x".repeat(201) },
+  ])("rejects malformed roles %j", (modelRoles) => {
+    expect(CreateExecutionProfileInput.safeParse({ ...input, modelRoles }).success).toBe(false);
+  });
+  it.each(["pi", "codex", "kimi"] as const)("rejects Claude-only settings on %s", (harness) => {
+    const profile = {
+      ...input,
+      harness,
+      protocol: EXECUTION_HARNESS_PROTOCOLS[harness][0],
+      runtimeVersion: EXECUTION_HARNESS_VERSIONS[harness],
+    };
+    expect(
+      CreateExecutionProfileInput.safeParse({ ...profile, authScheme: "bearer" }).success,
+    ).toBe(false);
+    expect(
+      CreateExecutionProfileInput.safeParse({ ...profile, modelRoles: { opus: "model" } }).success,
+    ).toBe(false);
+  });
+});

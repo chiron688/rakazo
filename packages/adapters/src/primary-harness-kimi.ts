@@ -1,4 +1,5 @@
 import type { AgentRunRequest, SandboxProcessRequest } from "@rakazo/adapter-kit";
+import { kimiProviderFailure, nativeProviderError } from "./primary-harness-errors.js";
 import { prepareNativeMedia } from "./primary-harness-media.js";
 import type { NativeProtocolChannel, NativeProtocolContext } from "./primary-harness-protocol.js";
 import { nativeObject, nativeString } from "./primary-harness-protocol.js";
@@ -15,7 +16,7 @@ const SESSION_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 export const KIMI_SANDBOX_RUNNER = String.raw`
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {mkdirSync,readFileSync,writeFileSync,symlinkSync,existsSync,statSync,openSync,readSync,closeSync,fstatSync,realpathSync,constants} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync,symlinkSync,existsSync,statSync,openSync,readSync,closeSync,fstatSync,realpathSync,lstatSync,constants} from 'node:fs';
 import {createServer} from 'node:http';
 import {createInterface} from 'node:readline';
 import {Transform} from 'node:stream';
@@ -82,14 +83,24 @@ input.on('line',(line)=>{if(Buffer.byteLength(line)>16777216)return fail();let m
  forward(m);
 });
 async function start(m){
- const p=m.params;if(!p||!Array.isArray(p.tools)||typeof p.instructions!=='string'||typeof p.endpoint!=='string'||typeof p.modelId!=='string'||!process.env.KIMI_API_KEY)throw new Error('Invalid startup');
+ const p=m.params;if(!p||!Array.isArray(p.tools)||typeof p.instructions!=='string'||typeof p.endpoint!=='string'||typeof p.modelId!=='string'||(!p.nativeLogin&&!process.env.KIMI_API_KEY))throw new Error('Invalid startup');
  const names=p.tools.map(t=>'mcp__rakazo__'+t.name.replace(/_+/g,'_'));if(new Set(names).size!==names.length)throw new Error('Tool name collision');if(names.some(n=>n.length>64||!/^[a-zA-Z0-9_-]+$/.test(n)))throw new Error('Unsupported tool name');
  const q=JSON.stringify;
+ let provider='rakazo',providerConfig=['[providers.rakazo]','type = "openai"','model_source = "static"','base_url = '+q(p.endpoint),'api_key_env = "KIMI_API_KEY"'];
+ if(p.nativeLogin){
+  const credentials='/credentials/kimi';if(realpathSync(credentials)!==credentials||!['global','mainland-cn'].includes(p.region)||readFileSync(credentials+'/region','utf8').trim()!==p.region)throw new Error('Native account region mismatch');
+  for(const name of ['credentials','oauth']){const path=credentials+'/'+name;if(!lstatSync(path).isDirectory()||realpathSync(path)!==path)throw new Error('Invalid native credential directory');symlinkSync(path,state+'/'+name);}
+  if(!lstatSync(credentials+'/device_id').isFile())throw new Error('Invalid native account identity');symlinkSync(credentials+'/device_id',state+'/device_id');
+  const endpoints=p.region==='mainland-cn'?{oauthHost:'https://auth.kimi.com',baseUrl:'https://api.kimi.com/coding/v1'}:{oauthHost:'https://auth.kimi.ai',baseUrl:'https://api.kimi.ai/coding/v1'};
+  if(p.endpoint!==endpoints.baseUrl)throw new Error('Native account endpoint mismatch');
+  const key=p.region==='mainland-cn'?'oauth/kimi-code':'oauth/kimi-code-env-'+createHash('sha256').update(JSON.stringify(endpoints)).digest('hex').slice(0,16);
+  provider='managed:kimi-code';providerConfig=['[providers."managed:kimi-code"]','type = "kimi"','model_source = "static"','base_url = '+q(endpoints.baseUrl),'api_key = ""','[providers."managed:kimi-code".oauth]','storage = "file"','key = '+q(key),'oauth_host = '+q(endpoints.oauthHost)];
+ }
  const config=['default_model = "rakazo"','telemetry = false','default_permission_mode = "manual"',
- '[providers.rakazo]','type = "openai"','model_source = "static"','base_url = '+q(p.endpoint),'api_key_env = "KIMI_API_KEY"',
- '[models.rakazo]','provider = "rakazo"','model = '+q(p.modelId),'max_context_size = '+p.contextWindow,'capabilities = '+q(['tool_use',...(p.images?['image_in']:[])]),
+ ...providerConfig,
+ '[models.rakazo]','provider = '+q(provider),'model = '+q(p.modelId),'max_context_size = '+p.contextWindow,'capabilities = '+q(['tool_use',...(p.images?['image_in']:[])]),
  '[tools]','enabled = '+q(names.length?names:['mcp__rakazo__disabled']),
- '[database]','base = false','search = false','[loop_control]','max_steps_per_turn = 100','max_retries_per_step = 1','max_ralph_iterations = 0',
+ '[database]','base = false','search = false','[loop_control]','max_steps_per_turn = 100','max_attempts_per_step = 1','max_ralph_iterations = 0',
  '[[permission.rules]]','decision = "allow"','pattern = "mcp__rakazo__*"'].join('\n');
  writeFileSync(state+'/config.toml',config,{mode:0o600});
  writeFileSync(state+'/AGENTS.md',p.instructions,{mode:0o600});
@@ -120,6 +131,7 @@ async function start(m){
   if(event.result?.sessionId&&!sessionId)bindSession(event.result.sessionId);
   if(resumes.has(event.id)&&!event.method){const id=resumes.get(event.id);resumes.delete(event.id);if(!event.error)bindSession(id);}
   if(event.id==='rakazo:kimi:prompt'&&!event.method){await rpc('session/close',{sessionId});await drainWire();await previousResult();clearInterval(poll);
+   event.rakazoFailureCode=['auth.login_required','auth.provisioning_required','auth.token_missing','auth.token_unauthorized','provider.auth_error','provider.rate_limit','provider.connection_error','provider.overloaded','model.not_configured','model.config_invalid','model.not_found','auth.model_not_resolved','context.overflow'].includes(turnEnd?.error?.code)?turnEnd.error.code:undefined;
    if(event.result)event.result={...event.result,verifiedReason:turnEnd?.reason??'missing'};
   }
   if(event.method==='session/update'&&['tool_call','tool_call_update'].includes(event.params?.update?.sessionUpdate)){const u=event.params.update;if(u.sessionUpdate==='tool_call'){if(announcedCalls.size>=128)throw new Error('Native tool announcement limit');announcedCalls.set(u.toolCallId,u.title);}event.params.update={sessionUpdate:u.sessionUpdate,toolCallId:u.toolCallId,title:u.title,kind:u.kind,status:u.status};}
@@ -130,7 +142,7 @@ async function start(m){
 `;
 
 export function buildKimiProcess(request: AgentRunRequest): SandboxProcessRequest {
-  if (request.model.oauth || !request.model.apiKey?.trim()) {
+  if (request.model.oauth || (!request.model.nativeLogin && !request.model.apiKey?.trim())) {
     throw new Error("Kimi Code requires an explicit API key; OAuth is not supported");
   }
   if (!request.model.baseUrl)
@@ -138,7 +150,7 @@ export function buildKimiProcess(request: AgentRunRequest): SandboxProcessReques
   return {
     isolation: "primary-harness",
     argv: ["node", "--input-type=module", "--eval", KIMI_SANDBOX_RUNNER],
-    env: { KIMI_API_KEY: request.model.apiKey },
+    env: request.model.nativeLogin ? {} : { KIMI_API_KEY: request.model.apiKey! },
   };
 }
 
@@ -162,6 +174,8 @@ export async function runKimiProtocol(
     instructions: request.instructions,
     modelId: request.model.id,
     endpoint: request.model.baseUrl,
+    nativeLogin: Boolean(request.model.nativeLogin),
+    region: request.model.nativeLogin?.region,
     contextWindow: request.model.contextWindow ?? 128_000,
     images: Boolean(request.model.acceptsImages),
     tools: context.tools.map(({ name, description, inputSchema }) => ({
@@ -182,6 +196,7 @@ export async function runKimiProtocol(
     nativeObject(initialized.agentInfo).version !== KIMI_CLI_VERSION
   )
     throw new Error("Unsupported Kimi ACP protocol");
+  if (request.model.nativeLogin) await channel.request("authenticate", { methodId: "login" });
   const session = await channel.request(
     context.nativeSessionId ? "session/resume" : "session/new",
     {
@@ -304,8 +319,12 @@ export async function runKimiProtocol(
         message.error ||
         result.stopReason !== "end_turn" ||
         result.verifiedReason !== "completed"
-      )
-        throw new Error("Kimi Code did not complete successfully");
+      ) {
+        const failure = kimiProviderFailure(message.rakazoFailureCode);
+        throw failure
+          ? nativeProviderError("Kimi Code", failure)
+          : new Error("Kimi Code did not complete successfully");
+      }
       if (usageIds.size === 0)
         context.emit({
           type: "usage",

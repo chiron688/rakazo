@@ -19,6 +19,8 @@ const profile = {
   provider: "anthropic",
   credentialId: "account-a",
   protocol: "anthropic",
+  authScheme: "api-key",
+  modelRoles: {},
   endpoint: "https://api.anthropic.com",
   modelId: "test-model",
   inputModalities: [],
@@ -173,6 +175,8 @@ describe("explicit execution profiles", () => {
     const created = await createExecutionProfile(prisma, scope, {
       ...profile,
       harness: "claude",
+      authScheme: "api-key",
+      modelRoles: {},
       protocol: "anthropic",
       inputModalities: [],
       supersedesId: profile.id,
@@ -184,4 +188,27 @@ describe("explicit execution profiles", () => {
       isolationLevel: "Serializable",
     });
   });
+});
+
+it("pins auth header style and model role mapping independently of property order", async () => {
+  const { prisma, db } = fixture();
+  const configured = {
+    ...profile,
+    authScheme: "bearer",
+    modelRoles: { haiku: "glm-5.3[1m]", opus: "namespace/model" },
+  };
+  db.executionProfile.findFirst.mockResolvedValue(configured);
+  const snapshot = executionProfileSnapshot(configured, credential.secretId, "computer");
+  await expect(
+    resolveRunExecutionProfile(
+      prisma,
+      run({ ...snapshot, modelRoles: { opus: "namespace/model", haiku: "glm-5.3[1m]" } }),
+    ),
+  ).resolves.toBeTruthy();
+  await expect(
+    resolveRunExecutionProfile(prisma, run({ ...snapshot, authScheme: "api-key" })),
+  ).rejects.toThrow("does not match");
+  await expect(
+    resolveRunExecutionProfile(prisma, run({ ...snapshot, modelRoles: { opus: "other-model" } })),
+  ).rejects.toThrow("does not match");
 });

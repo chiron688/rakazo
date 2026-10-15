@@ -125,7 +125,11 @@ jobs:
         run: |
           pnpm exec vitest run \
             packages/adapters/src/primary-harness-offline-integration.test.ts \
-            packages/adapters/src/primary-harness-kimi-offline-integration.test.ts
+            packages/adapters/src/primary-harness-kimi-offline-integration.test.ts \
+            packages/adapters/src/primary-harness-auth-codex-offline-integration.test.ts \
+            packages/adapters/src/primary-harness-auth-kimi.test.ts \
+            packages/adapters/src/primary-harness-errors-offline-integration.test.ts \
+            packages/adapters/src/primary-harness-accounts-offline-integration.test.ts
 
   test-integration:
     name: Postgres journeys

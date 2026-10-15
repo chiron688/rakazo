@@ -51,6 +51,8 @@ export function createRunSandbox(
 export class HostAwareSandbox implements SandboxProvider {
   readonly pageBrowser?: SandboxProvider["pageBrowser"];
   readonly startProcess?: SandboxProvider["startProcess"];
+  readonly cleanupNativeState?: SandboxProvider["cleanupNativeState"];
+  readonly nativeStateInstallationId?: SandboxProvider["nativeStateInstallationId"];
 
   constructor(
     private readonly isolated: SandboxProvider,
@@ -64,6 +66,17 @@ export class HostAwareSandbox implements SandboxProvider {
           return Promise.reject(new Error("Isolated harness processes require a Docker computer."));
         }
         return this.isolated.startProcess(computer, request, context);
+      };
+    }
+    if (isolated.nativeStateInstallationId) {
+      this.nativeStateInstallationId = () => isolated.nativeStateInstallationId!();
+    }
+    if (isolated.cleanupNativeState) {
+      this.cleanupNativeState = (computer, request, context) => {
+        if (computer.kind !== "docker" || !this.isolated.cleanupNativeState) {
+          return Promise.reject(new Error("Private native state requires a Docker computer."));
+        }
+        return this.isolated.cleanupNativeState(computer, request, context);
       };
     }
     if (isolated.pageBrowser || host.pageBrowser) {

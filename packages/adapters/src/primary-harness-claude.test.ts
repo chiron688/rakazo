@@ -2,7 +2,11 @@ import { runInNewContext } from "node:vm";
 import type { AgentRunRequest, AgentRuntimeEvent } from "@rakazo/adapter-kit";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
-import { CLAUDE_SANDBOX_RUNNER, runClaudeProtocol } from "./primary-harness-claude.js";
+import {
+  buildClaudeProcess,
+  CLAUDE_SANDBOX_RUNNER,
+  runClaudeProtocol,
+} from "./primary-harness-claude.js";
 import type { NativeProtocolContext } from "./primary-harness-protocol.js";
 
 function setup(messages: Record<string, unknown>[], nativeSessionId?: string) {
@@ -303,5 +307,44 @@ describe("Claude resumable journal barrier", () => {
     });
     await expect(f.invoke(input)).rejects.toThrow(/did not acknowledge/);
     expect(f.close).toHaveBeenCalled();
+  });
+});
+
+describe("Claude explicit compatible-provider configuration", () => {
+  it("keeps API key and bearer header modes exclusive and passes exact role models", () => {
+    const { request } = setup([]).context;
+    request.model.apiKey = "fake-selected-api-key";
+    request.model.baseUrl = "https://example.invalid/anthropic";
+    request.model.modelRoles = {
+      haiku: "small-model",
+      sonnet: "balanced-model",
+      opus: "large-model[1m]",
+      fable: "fast-model",
+      subagent: "helper-model",
+    };
+    expect(buildClaudeProcess(request).env).toEqual({
+      ANTHROPIC_API_KEY: "fake-selected-api-key",
+      ANTHROPIC_BASE_URL: "https://example.invalid/anthropic",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "small-model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "balanced-model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "large-model[1m]",
+      ANTHROPIC_DEFAULT_FABLE_MODEL: "fast-model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "helper-model",
+    });
+    request.model.authScheme = "bearer";
+    expect(buildClaudeProcess(request).env?.ANTHROPIC_AUTH_TOKEN).toBe("fake-selected-api-key");
+    expect(buildClaudeProcess(request).env).not.toHaveProperty("ANTHROPIC_API_KEY");
+  });
+  it.each([
+    { role: "unrecognized", model: "model" },
+    { role: "__proto__", model: "model" },
+    { role: "haiku", model: "" },
+    { role: "haiku", model: " model" },
+    { role: "haiku", model: "model\nNODE_OPTIONS=unsafe" },
+    { role: "haiku", model: "m".repeat(201) },
+  ])("rejects invalid role configuration $role", ({ role, model }) => {
+    const { request } = setup([]).context;
+    request.model.modelRoles = { [role]: model };
+    expect(() => buildClaudeProcess(request)).toThrow("Invalid Claude model role");
   });
 });

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import Docker from "dockerode";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ProcessIdentity } from "./isolated-process.js";
-import { IsolatedProcessManager } from "./isolated-process.js";
+import { IsolatedProcessManager, sessionFamilyName } from "./isolated-process.js";
 
 // Explicit opt-in only. Requires a prebuilt trusted image and the documented host firewall.
 // Never builds/pulls images, changes firewall rules, or contacts a model provider.
@@ -30,7 +30,7 @@ const command = (code: string) => ({
 describe.skipIf(!enabled)("real isolated Docker runtime (offline opt-in)", () => {
   afterEach(async () => {
     await manager.stopComputer(identity.computerId);
-    await manager.destroyComputer(identity.computerBotId);
+    await manager.destroyComputer(identity.computerBotId, identity.spaceId);
   });
 
   it("supports stdin/stdout and keeps credentials out of inspect/argv", async () => {
@@ -111,5 +111,86 @@ describe.skipIf(!enabled)("real isolated Docker runtime (offline opt-in)", () =>
     const output = await new Response(second.body).text();
     expect(output).toContain("saved");
     expect(output).toContain('"code":0');
+  });
+
+  it("persists a native credential only within the exact user/computer account namespace", async () => {
+    const credentialScope = { harness: "codex" as const, connectionId: owner, epoch: "credential" };
+    const first = await manager.start(
+      identity,
+      {
+        ...command(
+          "import pathlib; pathlib.Path('/credentials/fake-auth').write_text('fake-offline-credential'); pathlib.Path('/home/harness/transient-config').write_text('discard')",
+        ),
+        credentialScope,
+      },
+      signal(),
+    );
+    expect(await new Response(first.body).text()).toContain('"code":0');
+    const secondIdentity = { ...identity, botId: `${owner}-other-bot`, runId: `${owner}-next` };
+    const second = await manager.start(
+      secondIdentity,
+      {
+        ...command(
+          "import pathlib; assert pathlib.Path('/credentials/fake-auth').read_text() == 'fake-offline-credential'; assert not pathlib.Path('/home/harness/transient-config').exists(); print('scoped')",
+        ),
+        credentialScope,
+      },
+      signal(),
+    );
+    expect(await new Response(second.body).text()).toContain('"code":0');
+    const foreignIdentity = { ...identity, userId: `${owner}-other-user` };
+    const foreign = await manager.start(
+      foreignIdentity,
+      {
+        ...command(
+          "import pathlib; assert not pathlib.Path('/credentials/fake-auth').exists(); print('isolated')",
+        ),
+        credentialScope,
+      },
+      signal(),
+    );
+    expect(await new Response(foreign.body).text()).toContain('"code":0');
+    await manager.cleanupNativeState(identity, { expectedInstallationId: owner, credentialScope });
+    await manager.cleanupNativeState(foreignIdentity, {
+      expectedInstallationId: owner,
+      credentialScope,
+    });
+  });
+
+  it("removes the exact root/helper transcript family after all processes release it", async () => {
+    const sessionScope = {
+      threadId: owner,
+      profileId: owner,
+      profileRevision: 1,
+      accountId: owner,
+      epoch: "family-root",
+    };
+    for (const scope of [
+      sessionScope,
+      { ...sessionScope, epoch: "helper", parentEpoch: sessionScope.epoch },
+    ]) {
+      const started = await manager.start(
+        identity,
+        {
+          ...command(
+            "import pathlib; pathlib.Path('/sessions/transcript').write_text('offline-test')",
+          ),
+          sessionScope: scope,
+        },
+        signal(),
+      );
+      expect(await new Response(started.body).text()).toContain('"code":0');
+    }
+    const filter = {
+      filters: {
+        label: [
+          `rakazo.harnessSessionOwner=${owner}`,
+          `rakazo.harnessSessionFamily=${sessionFamilyName(owner, identity, sessionScope)}`,
+        ],
+      },
+    };
+    expect((await docker.listVolumes(filter)).Volumes).toHaveLength(2);
+    await manager.cleanupNativeState(identity, { expectedInstallationId: owner, sessionScope });
+    expect((await docker.listVolumes(filter)).Volumes ?? []).toHaveLength(0);
   });
 });

@@ -16,6 +16,9 @@ vi.mock("../../lib/rpc", () => ({
     },
     me: vi.fn().mockResolvedValue(null),
     executionProfiles: { list: vi.fn().mockResolvedValue([]) },
+    nativeLogins: {
+      list: vi.fn().mockResolvedValue({ enabled: false, accounts: [], computers: [] }),
+    },
   },
 }));
 vi.mock("@lingui/react/macro", () => {
@@ -284,6 +287,8 @@ const executionProfile: ExecutionProfile = {
   credentialId: "account-a",
   endpoint: "https://api.example.test",
   modelId: "test-model",
+  authScheme: "api-key",
+  modelRoles: {},
   inputModalities: [],
   computerId: null,
   createdAt: "2026-10-01T00:00:00.000Z",
