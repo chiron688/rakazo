@@ -73,6 +73,7 @@ import {
   isSandboxGoneError,
   isScratchpadStatus,
   kickModelCredentialRefresh,
+  knownModelImageCapability,
   listAvailablePiCatalog,
   listBotSecretMetadata,
   listPiCatalog,
@@ -159,6 +160,7 @@ import {
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
+  resolveGroupTargetBotIds,
 } from "@rakazo/core";
 import type { BoardEvents, Board as BoardRow, PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
@@ -170,6 +172,7 @@ import {
   CannotRenameSpaceAsNonOwnerError,
   ComputerLimitError,
   claimEmptySpaceDeletionForMember,
+  createExecutionProfile,
   createExternalConversationRepos,
   createGroupRepos,
   createRepos,
@@ -178,7 +181,9 @@ import {
   defaultModelCredentialCandidates,
   deleteEmptySpaceForMember,
   deleteUnreferencedCredentialSecret,
+  ExecutionProfileUnavailableError,
   ensureBoard,
+  executionProfileDto,
   findDefaultModelCredential,
   findDefaultVoiceCredential,
   findModelCredential,
@@ -201,6 +206,7 @@ import {
   renameSpaceForMember,
   renewSpaceDeletionClaim,
   replaceSpaceBackupModels,
+  resolveExecutionProfile,
   restoreBotUnderComputerQuota,
   SPACE_DELETION_CLAIM_TIMEOUT_MS,
   SpaceDeletionInProgressError,
@@ -710,7 +716,9 @@ export async function enqueueBotIntroRun(deps: RouterDeps, actor: Actor, bot: Bo
   // extra automatic run there competes with whatever response a test or eval
   // harness queued next, for a bot it doesn't otherwise get to opt out of.
   if (deps.env.agentRuntime === "scripted") return;
-  if ((await modelSetup(deps, actor)).needsModel) return;
+  if (bot.executionProfileId) {
+    await resolveExecutionProfile(deps.prisma, actor, bot.executionProfileId);
+  } else if ((await modelSetup(deps, actor)).needsModel) return;
   const run = await deps.prisma.$transaction(async (tx) => {
     const task = await tx.task.create({
       data: {
@@ -1569,6 +1577,35 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
     },
+    executionProfiles: {
+      list: authed.executionProfiles.list.handler(async ({ context }) => {
+        const profiles = await deps.prisma.executionProfile.findMany({
+          where: { spaceId: context.actor.spaceId, userId: context.actor.userId },
+          orderBy: [{ createdAt: "desc" }, { revision: "desc" }, { id: "asc" }],
+        });
+        return profiles.map(executionProfileDto);
+      }),
+      create: authed.executionProfiles.create.handler(async ({ context, input }) => {
+        await assertMcpRemoteEndpoint(input.endpoint, context.actor, deps);
+        try {
+          if (
+            input.inputModalities.includes("image") &&
+            knownModelImageCapability(input) === false
+          ) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "This model does not support image input.",
+            });
+          }
+          const profile = await createExecutionProfile(deps.prisma, context.actor, input);
+          return executionProfileDto(profile);
+        } catch (error) {
+          if (error instanceof ExecutionProfileUnavailableError) {
+            throw new ORPCError("BAD_REQUEST", { message: error.message });
+          }
+          throw error;
+        }
+      }),
+    },
     bots: {
       list: authed.bots.list.handler(async ({ context }) => repos.listBots(context.actor)),
       listArchived: authed.bots.listArchived.handler(async ({ context }) =>
@@ -1602,6 +1639,7 @@ export function createRouter(deps: RouterDeps) {
             notifyOnFinish: source.notifyOnFinish,
             color: source.color,
             computerMode: source.computer?.scope === "dedicated" ? "dedicated" : "team",
+            executionProfileId: source.executionProfileId,
             modelProvider: source.modelProvider,
             modelId: source.modelId,
             thinkingLevel: source.thinkingLevel,
@@ -1648,6 +1686,20 @@ export function createRouter(deps: RouterDeps) {
           });
           if (!section) throw new IsolationError();
         }
+        if (input.executionProfileId) {
+          try {
+            await resolveExecutionProfile(deps.prisma, context.actor, input.executionProfileId);
+          } catch (error) {
+            if (error instanceof ExecutionProfileUnavailableError) {
+              throw new ORPCError("BAD_REQUEST", { message: error.message });
+            }
+            throw error;
+          }
+        }
+        const effectiveProfileId =
+          input.executionProfileId === undefined
+            ? existing.executionProfileId
+            : input.executionProfileId;
         // Web settings resend the saved model on every save. Reject an
         // incompatible override only when this request is changing it; a run
         // still rejects a Spark model the subscription sign-in cannot call.
@@ -1655,6 +1707,11 @@ export function createRouter(deps: RouterDeps) {
           input.modelProvider !== undefined &&
           input.modelId !== undefined &&
           (input.modelProvider !== existing.modelProvider || input.modelId !== existing.modelId);
+        if (settingModel && effectiveProfileId) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Change the execution profile to select another model.",
+          });
+        }
         if (settingModel && input.modelProvider && input.modelId) {
           const credential = await findModelCredential(
             deps.prisma,
@@ -1694,7 +1751,7 @@ export function createRouter(deps: RouterDeps) {
           }
         }
         const thinkingLevel = input.thinkingLevel;
-        if (input.thinkingLevel) {
+        if (input.thinkingLevel && !effectiveProfileId) {
           const provider =
             input.modelProvider !== undefined ? input.modelProvider : existing.modelProvider;
           const modelId = input.modelId !== undefined ? input.modelId : existing.modelId;
@@ -1758,6 +1815,9 @@ export function createRouter(deps: RouterDeps) {
             sectionId: input.sectionId,
             voiceId: input.voiceId,
             autoSpeak: input.autoSpeak,
+            ...(input.executionProfileId !== undefined
+              ? { executionProfileId: input.executionProfileId }
+              : {}),
             ...(input.modelProvider !== undefined
               ? { modelProvider: input.modelProvider, modelId: input.modelId ?? null }
               : {}),
@@ -2163,10 +2223,42 @@ export function createRouter(deps: RouterDeps) {
         }
       }),
       send: authed.threads.send.handler(async ({ context, input }) => {
-        if ((await modelSetup(deps, context.actor)).needsModel) {
-          throw new ORPCError("BAD_REQUEST", { message: "Connect a model to start a run." });
-        }
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        if (target.kind === "bot" && target.bot.executionProfileId) {
+          await resolveExecutionProfile(deps.prisma, context.actor, target.bot.executionProfileId);
+        } else if ((await modelSetup(deps, context.actor)).needsModel) {
+          const targetBotIds =
+            target.kind === "group"
+              ? resolveGroupTargetBotIds({
+                  text: input.text ?? "",
+                  members: target.members.map((member) => ({
+                    id: member.botId,
+                    name: member.name,
+                  })),
+                  explicitMentions: (input.mentions ?? []).flatMap((mention) =>
+                    typeof mention === "string"
+                      ? [mention]
+                      : mention.kind === "bot"
+                        ? [mention.id]
+                        : [],
+                  ),
+                })
+              : [target.botId];
+          const bots = await deps.prisma.bot.findMany({
+            where: {
+              id: { in: targetBotIds },
+              spaceId: context.actor.spaceId,
+              userId: context.actor.userId,
+            },
+            select: { id: true, executionProfileId: true },
+          });
+          if (bots.length !== targetBotIds.length || bots.some((bot) => !bot.executionProfileId)) {
+            throw new ORPCError("BAD_REQUEST", { message: "Connect a model to start a run." });
+          }
+          for (const bot of bots) {
+            await resolveExecutionProfile(deps.prisma, context.actor, bot.executionProfileId!);
+          }
+        }
         if (target.kind === "bot") {
           await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
         }
@@ -3277,7 +3369,7 @@ export function createRouter(deps: RouterDeps) {
           });
         }
         const bot = await repos.getBot(context.actor, input.botId);
-        await assertRoutineModel(deps, context.actor, input);
+        await assertRoutineModel(deps, context.actor, input, bot);
         // Validate every recurring cron even when inactive; @once and webhook-only have no next date.
         let nextRunAt: Date | null = null;
         if (input.crons.length > 0 && !isOneShotRoutineCrons(input.crons)) {
@@ -3363,8 +3455,8 @@ export function createRouter(deps: RouterDeps) {
               ? null
               : existing.thinkingLevel
             : input.thinkingLevel;
-        if (modelChanged) {
-          await assertRoutineModel(deps, context.actor, { modelProvider, modelId });
+        if (modelChanged || bot.executionProfileId) {
+          await assertRoutineModel(deps, context.actor, { modelProvider, modelId }, bot);
         }
         if (crons.length === 0 && !webhookEnabled && !githubEnabled && !messageProvider) {
           throw new ORPCError("BAD_REQUEST", {
@@ -3515,6 +3607,7 @@ export function createRouter(deps: RouterDeps) {
         });
         if (!routine) throw new IsolationError();
         const bot = await repos.getBot(context.actor, routine.botId);
+        await assertRoutineModel(deps, context.actor, routine, bot);
         if (!bot.thread) throw new IsolationError();
         const threadId = bot.thread.id;
         const nonce = input.clientNonce ? `routine-test:${input.clientNonce}` : undefined;
@@ -6822,7 +6915,17 @@ async function assertRoutineModel(
   deps: RouterDeps,
   actor: Actor,
   model: { modelProvider?: string | null; modelId?: string | null },
+  bot?: { executionProfileId?: string | null },
 ) {
+  if (bot?.executionProfileId) {
+    await resolveExecutionProfile(deps.prisma, actor, bot.executionProfileId);
+    if (model.modelProvider || model.modelId) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Clear the routine model override to use the bot execution profile.",
+      });
+    }
+    return;
+  }
   if (!model.modelProvider || !model.modelId) return;
   const message = await validateConnectedModelChoice(
     deps.prisma,

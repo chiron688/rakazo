@@ -50,12 +50,22 @@ export function createRunSandbox(
 
 export class HostAwareSandbox implements SandboxProvider {
   readonly pageBrowser?: SandboxProvider["pageBrowser"];
+  readonly startProcess?: SandboxProvider["startProcess"];
 
   constructor(
     private readonly isolated: SandboxProvider,
     private readonly host: SandboxProvider,
     private readonly hostEnabled: () => Promise<boolean>,
   ) {
+    // Native harnesses must never fall back to a shell on the API or desktop host.
+    if (isolated.startProcess) {
+      this.startProcess = (computer, request, context) => {
+        if (computer.kind !== "docker" || !this.isolated.startProcess) {
+          return Promise.reject(new Error("Isolated harness processes require a Docker computer."));
+        }
+        return this.isolated.startProcess(computer, request, context);
+      };
+    }
     if (isolated.pageBrowser || host.pageBrowser) {
       this.pageBrowser = (computer, request, context) => {
         const provider = this.route(computer);

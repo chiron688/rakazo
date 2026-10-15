@@ -185,6 +185,7 @@ async function main() {
     pushSessionExpiresAt(prisma, sessionId),
   );
   const executor = createRunExecutor({
+    primaryHarnessesEnabled: process.env.PRIMARY_HARNESSES_ENABLED === "true",
     prisma,
     runtime,
     // Live per-account Codex catalog; never refreshes or writes credentials.

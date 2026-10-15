@@ -226,6 +226,7 @@ msgid "Access token (optional)"
 msgstr "访问令牌（可选）"
 
 #: src/pages/AccountSettingsOverlay.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Account"
 msgstr "账户"
 
@@ -742,6 +743,10 @@ msgstr "Bot"
 msgid "Bot"
 msgstr "Bot"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Bot computer"
+msgstr "Bot 电脑"
+
 #: src/pages/Shell.tsx
 msgid "Bot screen"
 msgstr "Bot 屏幕"
@@ -802,6 +807,7 @@ msgstr "无法连接服务器。"
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
 #: src/pages/shell/dialogs.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Cancel"
 msgstr "取消"
 
@@ -884,6 +890,10 @@ msgstr "报到。"
 msgid "Check the API key or sign-in, then test again."
 msgstr "请检查 API 密钥或登录，然后重新测试。"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Check the profile fields"
+msgstr "请检查配置文件中的字段"
+
 #: src/lib/model-connection-preflight.ts
 msgid "Check the server URL and network, then test again."
 msgstr "请检查服务器 URL 和网络，然后重新测试。"
@@ -919,9 +929,17 @@ msgstr "选择 Bot…"
 msgid "Choose a new password"
 msgstr "设置新密码"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Choose account"
+msgstr "选择账户"
+
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Choose file"
 msgstr "选择文件"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Choose provider"
+msgstr "选择服务商"
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Choose which connected model Rakazo uses."
@@ -1153,6 +1171,10 @@ msgstr "连接模型"
 msgid "Connect a provider to add backups."
 msgstr "连接提供商后即可添加备用模型。"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Connect an API account in Models first."
+msgstr "请先在“模型”中连接 API 账户。"
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Connect API key"
 msgstr "连接 API 密钥"
@@ -1350,6 +1372,10 @@ msgstr "无法创建 Bot"
 msgid "Could not create group"
 msgstr "无法创建群组"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Could not create profile"
+msgstr "无法创建配置文件"
+
 #: src/pages/shell/dialogs.tsx
 msgid "Could not create section"
 msgstr "无法创建分组"
@@ -1471,6 +1497,10 @@ msgstr ""
 #: src/pages/shell/bot-credentials.tsx
 msgid "Could not load credentials."
 msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Could not load execution profiles"
+msgstr "无法加载执行配置文件"
 
 #: src/components/integrations/IntegrationSetup.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -1748,6 +1778,10 @@ msgstr "新建群组"
 #: src/pages/shell/bot-picker.tsx
 msgid "Create new Space"
 msgstr "新建工作区"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Create profile"
+msgstr "创建配置文件"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Create Routine"
@@ -2080,6 +2114,14 @@ msgstr "该邮箱不允许注册"
 msgid "Email verification required"
 msgstr "需要验证邮箱"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Endpoint"
+msgstr "端点"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Endpoint (optional)"
+msgstr "端点（可选）"
+
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Ends {day}"
 msgstr ""
@@ -2119,6 +2161,14 @@ msgstr "请输入 1 到 1000 之间的整数作为图像限制。"
 msgid "Enter an API key before testing."
 msgstr "测试前请输入 API 密钥。"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Environment"
+msgstr "环境"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Environment: Bot computer"
+msgstr "环境：Bot 电脑"
+
 #: src/lib/roster-status.ts
 #: src/pages/Shell.tsx
 msgid "Error"
@@ -2156,6 +2206,10 @@ msgstr "每月"
 #: src/pages/RoutineSchedule.tsx
 msgid "Every week"
 msgstr "每周"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Execution profile"
+msgstr "执行配置文件"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Executor token"
@@ -2347,6 +2401,10 @@ msgstr "请先挂断，然后输入屏幕上的代码。"
 msgid "Hang up, then enter the code on screen."
 msgstr "请挂断，然后输入屏幕上的代码。"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Harness"
+msgstr "执行引擎"
+
 #: src/pages/RoutineEditor.tsx
 msgid "header"
 msgstr "请求头"
@@ -2424,6 +2482,10 @@ msgstr "如果听到了，说明语音已就绪。"
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Ignore"
 msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "image input"
+msgstr "图像输入"
 
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Image upload area"
@@ -2573,6 +2635,10 @@ msgstr ""
 msgid "Listening"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Live calls use transcripts."
+msgstr "实时通话使用语音转写文本。"
+
 #: src/pages/Shell.tsx
 msgid "Load earlier messages"
 msgstr "加载更早的消息"
@@ -2630,6 +2696,7 @@ msgstr "正在加载语音提供方…"
 #: src/pages/PeerMessagesOverlay.tsx
 #: src/pages/RoutineRunHistory.tsx
 #: src/pages/Shell.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Loading…"
 msgstr "加载中…"
 
@@ -2849,12 +2916,21 @@ msgstr "分钟"
 #: src/pages/Onboarding.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/shell/bot-panel.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Model"
 msgstr "模型"
 
 #: src/lib/model-connection-preflight.ts
 msgid "Model \"{modelId}\" was not listed."
 msgstr "模型“{modelId}”未列出。"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Model accepts images"
+msgstr "模型支持图像输入"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Model accepts uploaded audio"
+msgstr "模型支持上传的音频"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -2983,6 +3059,14 @@ msgstr "新的待办"
 #: src/pages/Auth.tsx
 msgid "New password"
 msgstr "新密码"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "New profile"
+msgstr "新建配置文件"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "New revision"
+msgstr "新修订版本"
 
 #: src/pages/BotContextMenu.tsx
 #: src/pages/shell/dialogs.tsx
@@ -3133,6 +3217,10 @@ msgstr ""
 #: src/pages/ModelBackupsSettings.tsx
 msgid "Not connected"
 msgstr "未连接"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Not enabled for this model: {undeclaredInputs}"
+msgstr "此模型未启用：{undeclaredInputs}"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Not in the plugin catalog"
@@ -3363,6 +3451,10 @@ msgstr "已暂停"
 msgid "Photo"
 msgstr "照片"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Pi (default)"
+msgstr "Pi（默认）"
+
 #: src/lib/model-connection-preflight.ts
 msgid "Pick a model from the catalog."
 msgstr "请从目录中选择模型。"
@@ -3374,6 +3466,10 @@ msgstr "请从列表中选择模型，或输入此端点提供的模型 ID。"
 #: src/pages/BotContextMenu.tsx
 msgid "Pin"
 msgstr "置顶"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Pinned computer"
+msgstr "固定电脑"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Playing…"
@@ -3408,6 +3504,10 @@ msgstr "私有"
 msgid "Private workspace with its own bots and groups."
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Profile name"
+msgstr "配置文件名称"
+
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Project ID"
 msgstr ""
@@ -3416,8 +3516,13 @@ msgstr ""
 msgid "Protected input"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Protocol"
+msgstr "协议"
+
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Provider"
 msgstr "提供方"
 
@@ -3665,6 +3770,10 @@ msgstr ""
 msgid "Replying to {0}"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Requires an enabled Linux Docker runtime."
+msgstr "需要启用 Linux Docker 运行环境。"
+
 #: src/pages/shell/message-cards.tsx
 msgid "Research & writing"
 msgstr "调研和写作"
@@ -3725,6 +3834,7 @@ msgstr ""
 #: src/components/AccountAccess.tsx
 #: src/pages/Auth.tsx
 #: src/pages/ModelBackupsSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Retry"
 msgstr "重试"
 
@@ -3810,6 +3920,10 @@ msgstr "正在运行…"
 #: src/pages/RoutineEditor.tsx
 msgid "Runs when this bot receives a verified message from this provider."
 msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Runtime version"
+msgstr "运行时版本"
 
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
@@ -4421,6 +4535,14 @@ msgstr "此操作将永久删除您的账户和数据。"
 msgid "This permanently removes every message and stops current work. The chat remains available."
 msgstr "将永久删除全部消息并停止当前工作。聊天仍可使用。"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "This profile is unavailable. Choose another profile."
+msgstr "此配置文件不可用。请选择其他配置文件。"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "This profile’s account is unavailable. Choose another profile."
+msgstr "此配置文件的账户不可用。请选择其他配置文件。"
+
 #: src/lib/model-connection-preflight.ts
 msgid "This provider cannot be tested without saving."
 msgstr "此提供方必须先保存才能测试。"
@@ -4545,6 +4667,18 @@ msgstr "未分配"
 msgid "Unavailable"
 msgstr "不可用"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Unavailable account"
+msgstr "账户不可用"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Unavailable profile"
+msgstr "配置文件不可用"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Unavailable: {unsupportedInputs}"
+msgstr "不支持：{unsupportedInputs}"
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Uninstall"
 msgstr ""
@@ -4569,6 +4703,10 @@ msgstr "取消置顶"
 #: src/pages/Shell.tsx
 msgid "Unsupported file type: {0}"
 msgstr "不支持的文件类型：{0}"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Unsupported runtime version. Create a new revision."
+msgstr "不支持此运行时版本。请创建新修订版本。"
 
 #: src/components/DesktopUpdates.tsx
 #: src/components/SoftwareUpdateSection.tsx
@@ -4630,6 +4768,10 @@ msgstr "正在更新…"
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Upload"
 msgstr "上传"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "uploaded audio"
+msgstr "上传的音频"
 
 #: src/lib/ticket-priority.ts
 msgid "Urgent"

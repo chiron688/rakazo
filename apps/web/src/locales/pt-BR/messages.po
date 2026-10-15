@@ -226,6 +226,7 @@ msgid "Access token (optional)"
 msgstr "Token de acesso (opcional)"
 
 #: src/pages/AccountSettingsOverlay.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Account"
 msgstr "Conta"
 
@@ -742,6 +743,10 @@ msgstr "Bot"
 msgid "Bot"
 msgstr "Bot"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Bot computer"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Bot screen"
 msgstr "Tela do bot"
@@ -802,6 +807,7 @@ msgstr "Não é possível acessar o servidor."
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
 #: src/pages/shell/dialogs.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Cancel"
 msgstr "Cancelar"
 
@@ -884,6 +890,10 @@ msgstr "Acompanhamento"
 msgid "Check the API key or sign-in, then test again."
 msgstr "Verifique a chave de API ou o login e teste novamente."
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Check the profile fields"
+msgstr ""
+
 #: src/lib/model-connection-preflight.ts
 msgid "Check the server URL and network, then test again."
 msgstr "Verifique a URL do servidor e a rede e teste novamente."
@@ -919,9 +929,17 @@ msgstr ""
 msgid "Choose a new password"
 msgstr "Escolha uma nova senha"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Choose account"
+msgstr ""
+
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Choose file"
 msgstr "Escolher arquivo"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Choose provider"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Choose which connected model Rakazo uses."
@@ -1153,6 +1171,10 @@ msgstr "Conectar um modelo"
 msgid "Connect a provider to add backups."
 msgstr "Conecte um provedor para adicionar backups."
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Connect an API account in Models first."
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Connect API key"
 msgstr "Conecte-se com a chave API"
@@ -1350,6 +1372,10 @@ msgstr "Não foi possível criar o bot"
 msgid "Could not create group"
 msgstr "Não foi possível criar o grupo"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Could not create profile"
+msgstr ""
+
 #: src/pages/shell/dialogs.tsx
 msgid "Could not create section"
 msgstr "Não foi possível criar a seção"
@@ -1470,6 +1496,10 @@ msgstr ""
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Could not load credentials."
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Could not load execution profiles"
 msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
@@ -1748,6 +1778,10 @@ msgstr "Criar novo grupo"
 #: src/pages/shell/bot-picker.tsx
 msgid "Create new Space"
 msgstr "Criar novo space"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Create profile"
+msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Create Routine"
@@ -2080,6 +2114,14 @@ msgstr "Este e-mail não tem permissão para se cadastrar"
 msgid "Email verification required"
 msgstr "É necessário verificar o e-mail"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Endpoint"
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Endpoint (optional)"
+msgstr ""
+
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Ends {day}"
 msgstr ""
@@ -2119,6 +2161,14 @@ msgstr "Digite um número inteiro de 1 a 1000 para o limite de imagens."
 msgid "Enter an API key before testing."
 msgstr "Informe uma chave de API antes de testar."
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Environment"
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Environment: Bot computer"
+msgstr ""
+
 #: src/lib/roster-status.ts
 #: src/pages/Shell.tsx
 msgid "Error"
@@ -2156,6 +2206,10 @@ msgstr "A cada mês"
 #: src/pages/RoutineSchedule.tsx
 msgid "Every week"
 msgstr "A cada semana"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Execution profile"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Executor token"
@@ -2347,6 +2401,10 @@ msgstr ""
 msgid "Hang up, then enter the code on screen."
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Harness"
+msgstr ""
+
 #: src/pages/RoutineEditor.tsx
 msgid "header"
 msgstr ""
@@ -2423,6 +2481,10 @@ msgstr "Se você ouviu isso, a voz está pronta."
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Ignore"
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "image input"
 msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
@@ -2573,6 +2635,10 @@ msgstr ""
 msgid "Listening"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Live calls use transcripts."
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Load earlier messages"
 msgstr "Carregar mensagens anteriores..."
@@ -2630,6 +2696,7 @@ msgstr "Carregando provedores de voz..."
 #: src/pages/PeerMessagesOverlay.tsx
 #: src/pages/RoutineRunHistory.tsx
 #: src/pages/Shell.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Loading…"
 msgstr "Carregando..."
 
@@ -2849,12 +2916,21 @@ msgstr "minutos"
 #: src/pages/Onboarding.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/shell/bot-panel.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Model"
 msgstr "Modelo"
 
 #: src/lib/model-connection-preflight.ts
 msgid "Model \"{modelId}\" was not listed."
 msgstr "O modelo \"{modelId}\" não foi listado."
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Model accepts images"
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Model accepts uploaded audio"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -2983,6 +3059,14 @@ msgstr "Novo item de trabalho aberto"
 #: src/pages/Auth.tsx
 msgid "New password"
 msgstr "Nova senha"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "New profile"
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "New revision"
+msgstr ""
 
 #: src/pages/BotContextMenu.tsx
 #: src/pages/shell/dialogs.tsx
@@ -3133,6 +3217,10 @@ msgstr ""
 #: src/pages/ModelBackupsSettings.tsx
 msgid "Not connected"
 msgstr "Não conectado"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Not enabled for this model: {undeclaredInputs}"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Not in the plugin catalog"
@@ -3363,6 +3451,10 @@ msgstr ""
 msgid "Photo"
 msgstr "Foto"
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Pi (default)"
+msgstr ""
+
 #: src/lib/model-connection-preflight.ts
 msgid "Pick a model from the catalog."
 msgstr "Escolha um modelo do catálogo."
@@ -3374,6 +3466,10 @@ msgstr "Escolha um modelo da lista ou informe um id de modelo servido por este e
 #: src/pages/BotContextMenu.tsx
 msgid "Pin"
 msgstr "Fixar"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Pinned computer"
+msgstr ""
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Playing…"
@@ -3408,6 +3504,10 @@ msgstr "Privado"
 msgid "Private workspace with its own bots and groups."
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Profile name"
+msgstr ""
+
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Project ID"
 msgstr ""
@@ -3416,8 +3516,13 @@ msgstr ""
 msgid "Protected input"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Protocol"
+msgstr ""
+
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Provider"
 msgstr "Provedor"
 
@@ -3665,6 +3770,10 @@ msgstr ""
 msgid "Replying to {0}"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Requires an enabled Linux Docker runtime."
+msgstr ""
+
 #: src/pages/shell/message-cards.tsx
 msgid "Research & writing"
 msgstr ""
@@ -3725,6 +3834,7 @@ msgstr ""
 #: src/components/AccountAccess.tsx
 #: src/pages/Auth.tsx
 #: src/pages/ModelBackupsSettings.tsx
+#: src/pages/shell/execution-profile-settings.tsx
 msgid "Retry"
 msgstr "Tentar novamente"
 
@@ -3809,6 +3919,10 @@ msgstr "Executando..."
 
 #: src/pages/RoutineEditor.tsx
 msgid "Runs when this bot receives a verified message from this provider."
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Runtime version"
 msgstr ""
 
 #: src/components/AskCard.tsx
@@ -4421,6 +4535,14 @@ msgstr "Isso exclui permanentemente sua conta e seus dados."
 msgid "This permanently removes every message and stops current work. The chat remains available."
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "This profile is unavailable. Choose another profile."
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "This profile’s account is unavailable. Choose another profile."
+msgstr ""
+
 #: src/lib/model-connection-preflight.ts
 msgid "This provider cannot be tested without saving."
 msgstr "Este provedor não pode ser testado sem salvar."
@@ -4545,6 +4667,18 @@ msgstr "Não atribuído"
 msgid "Unavailable"
 msgstr ""
 
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Unavailable account"
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Unavailable profile"
+msgstr ""
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Unavailable: {unsupportedInputs}"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Uninstall"
 msgstr ""
@@ -4569,6 +4703,10 @@ msgstr "Desafixar"
 #: src/pages/Shell.tsx
 msgid "Unsupported file type: {0}"
 msgstr "Tipo de arquivo não suportado: {0}"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "Unsupported runtime version. Create a new revision."
+msgstr ""
 
 #: src/components/DesktopUpdates.tsx
 #: src/components/SoftwareUpdateSection.tsx
@@ -4630,6 +4768,10 @@ msgstr "Atualizando…"
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Upload"
 msgstr "Enviar"
+
+#: src/pages/shell/execution-profile-settings.tsx
+msgid "uploaded audio"
+msgstr ""
 
 #: src/lib/ticket-priority.ts
 msgid "Urgent"

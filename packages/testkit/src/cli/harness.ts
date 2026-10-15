@@ -88,6 +88,7 @@ async function main() {
 
     if (integration) {
       const suites = [
+        "packages/db/src/execution-profiles.postgres.test.ts",
         "packages/testkit/src/pi-offline.postgres.test.ts",
         "packages/testkit/src/usage-accounting.postgres.test.ts",
         "packages/db/src/history-retrieval.postgres.test.ts",

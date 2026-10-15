@@ -1,4 +1,5 @@
 import type {
+  AttachmentAudioMimeType,
   CacheCapabilities as ConnectionCacheCapabilities,
   ConnectionCatalogItem,
   SandboxKind,
@@ -96,6 +97,31 @@ export interface CommandRequest {
   pty?: boolean;
   /** Maximum wall-clock runtime before the command and its descendants are terminated. */
   timeoutMs?: number;
+}
+
+/** Trusted runtime command. Never accepts a team workspace or user-controlled config directory. */
+export interface SandboxProcessRequest {
+  isolation: "primary-harness";
+  /** Server-resolved identity. A new epoch creates a fresh private native-session namespace. */
+  sessionScope?: {
+    threadId: string;
+    profileId: string;
+    profileRevision: number;
+    accountId: string;
+    epoch: string;
+  };
+  argv: string[];
+  /** Exact runtime credential/endpoint overlay; protected OS/config variables cannot be replaced. */
+  env?: Record<string, string>;
+  timeoutMs?: number;
+}
+
+/** A private bidirectional subprocess; terminate must destroy its entire process tree. */
+export interface SandboxProcessHandle {
+  events: AsyncIterable<ProcessEvent>;
+  writeStdin(data: string): Promise<void>;
+  closeStdin(): Promise<void>;
+  terminate(): Promise<void>;
 }
 
 export type ProcessEvent =
@@ -391,6 +417,13 @@ export interface AgentInputImage {
   data: Uint8Array;
 }
 
+/** Original audio bytes from an owned attachment, never an STT transcript or remote URL. */
+export interface AgentInputAudio {
+  name: string;
+  mimeType: AttachmentAudioMimeType;
+  data: Uint8Array;
+}
+
 export interface AgentSteeringMessage {
   id: string;
   messageId: string;
@@ -398,6 +431,7 @@ export interface AgentSteeringMessage {
   /** Persisted history text before attachment paths are appended. */
   historyText?: string;
   images?: AgentInputImage[];
+  audio?: AgentInputAudio[];
 }
 
 /** Adapter-supplied cache policy metadata; absent fields mean unknown. */
@@ -417,6 +451,8 @@ export interface AgentRunModel {
   reasoning?: boolean;
   /** Whether this custom connection accepts image input. */
   acceptsImages?: boolean;
+  /** Explicit model/profile support for original audio input; never implies STT. */
+  acceptsAudio?: boolean;
   /** Maximum number of image inputs the model connection accepts in one request. */
   maxImagesPerPrompt?: number;
   /** Maximum completion tokens sent to the model endpoint. */
@@ -460,8 +496,11 @@ export interface AgentRunRequest {
     content: string;
     /** Images attached to this message, hydrated only for recent user turns. */
     images?: AgentInputImage[];
+    /** Original audio attached to this message, hydrated within the native media budget. */
+    audio?: AgentInputAudio[];
   }>;
   currentTurnImages?: AgentInputImage[];
+  currentTurnAudio?: AgentInputAudio[];
   tools: ConnectorTool[];
   model: AgentRunModel;
   /** Ordered, user-selected models eligible after provider unavailability. */

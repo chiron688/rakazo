@@ -453,6 +453,7 @@ export async function createApp(
   // resolution alike, so a list call warms the run path in this process.
   const codexCatalog = new CodexCatalogCache();
   const executor = createRunExecutor({
+    primaryHarnessesEnabled: process.env.PRIMARY_HARNESSES_ENABLED === "true",
     contextStrategy,
     prisma,
     runtime,

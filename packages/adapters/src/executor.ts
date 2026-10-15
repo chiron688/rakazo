@@ -46,6 +46,8 @@ import {
   CLOUDFLARE_AI_GATEWAY_CONFIG_MESSAGE,
   COMPUTER_COMMAND_OUTPUT_MAX_CHARS,
   disabledBuiltinToolSet,
+  ExecutionHarnessSchema,
+  ExecutionProtocolSchema,
   HistoryReadInputSchema,
   HistorySearchInputSchema,
   isAttachmentImageMimeType,
@@ -102,6 +104,7 @@ import {
 import type { McpServer, Prisma, PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
   appendEventInTransaction,
+  claimNativeHarnessSession,
   createSpaceForMember,
   createThreadMessageInTransaction,
   effectiveMemoryScope,
@@ -113,9 +116,11 @@ import {
   parseComputerMode,
   readHistory,
   recordUsage,
+  resolveRunExecutionProfile,
   retireModelCredential,
   SpaceLimitError,
   searchHistory,
+  updateNativeHarnessSession,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { parse as parseShellCommand } from "shell-quote";
@@ -129,6 +134,7 @@ import {
   formatAgentEnvironmentInstruction,
   redactShellStreams,
 } from "./agent-environment.js";
+import { loadCurrentTurnMedia } from "./agent-input-media.js";
 import { buildApprovalAskBlock } from "./approval-ask.js";
 import {
   approvalPausedToolResult,
@@ -237,6 +243,12 @@ import { checkpointRunComputerWorkspace } from "./computer-workspace.js";
 import { redactConnectorPayload, sanitizeConnectorError } from "./connector-safety.js";
 import { formatCurrentTimeInstruction } from "./current-time.js";
 import { resolveDeploymentModel } from "./deployment-model.js";
+import {
+  profileHistoryMessage,
+  requireRuntimeCompletion,
+  resolveProfileModel,
+  validatePiProfileModel,
+} from "./execution-profile-runtime.js";
 import { handoffToGroupBot, loadGroupContext } from "./group-handoff.js";
 import {
   COMPACTION_BATCH_SIZE,
@@ -275,6 +287,7 @@ import {
 import {
   filterImageReturningComputerTools,
   IMAGE_RETURNING_COMPUTER_TOOLS,
+  knownModelImageCapability,
   MODEL_CANNOT_SEE_MESSAGE,
   modelAcceptsImageInput,
   modelIdSupportsImages,
@@ -301,6 +314,8 @@ import {
   renderPlotSpecToSvg,
   searchChartCatalog,
 } from "./plot-tool.js";
+import { withNativeHistoryMedia } from "./primary-harness-media.js";
+import { createPrimaryHarnessRuntime } from "./primary-harness-runtime.js";
 import { actorMayUsePrivateEndpoint } from "./private-endpoint.js";
 import type { RemoteTransportDependencies } from "./remote-mcp.js";
 import { assertSafeRemoteUrl } from "./remote-mcp.js";
@@ -2639,6 +2654,8 @@ export interface ExecutorDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
   runtime: AgentRuntime;
+  /** Opt-in; disabling never silently reroutes an existing native profile to Pi. */
+  primaryHarnessesEnabled?: boolean;
   sandbox: SandboxProvider;
   memory: MemoryStore;
   memoryProviders: MemoryProviderResolver;
@@ -3329,6 +3346,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
       let lastLeaseCheckAt = 0;
       let retainComputerLease = false;
       let screenRelease: { computer: ComputerRef; context: AdapterContext } | undefined;
+      let nativeSessionScope:
+        | {
+            spaceId: string;
+            userId: string;
+            botId: string;
+            threadId: string;
+            profileId: string;
+            runId: string;
+            leaseFence: number;
+          }
+        | undefined;
+      let nativeSessionOutcome: "completed" | "paused" | "interrupted" = "interrupted";
+      let stopNativeWatch: (() => void) | undefined;
       let runAbortController: AbortController | null = null;
       let detachShutdown: (() => void) | undefined;
       const heartbeat = setInterval(() => {
@@ -3439,10 +3469,35 @@ export function createRunExecutor(deps: ExecutorDeps) {
           ...initialBotCommandEnvironment,
         });
         // modelPinned distinguishes the captured choice from an attempt's recorded model.
-        const modelChoice = runModelChoice(run, bot);
+        let profileError: string | undefined;
+        const profileBinding = await resolveRunExecutionProfile(deps.prisma, run).catch(
+          (error: unknown) => {
+            profileError =
+              error instanceof Error ? error.message : "Execution profile is unavailable";
+            return null;
+          },
+        );
+        const executionProfile = profileBinding?.profile;
+        const configuredHarness = executionProfile
+          ? ExecutionHarnessSchema.parse(executionProfile.harness)
+          : "pi";
+        const nativeHarness = configuredHarness === "pi" ? null : configuredHarness;
+        const modelChoice = executionProfile
+          ? {
+              modelProvider: executionProfile.provider,
+              modelId: executionProfile.modelId,
+              thinkingLevel: null,
+            }
+          : runModelChoice(run, bot);
         const hasModelOverride = Boolean(modelChoice.modelProvider && modelChoice.modelId);
-        const overrideCredential =
-          hasModelOverride && modelChoice.modelProvider
+        const overrideCredential = profileBinding
+          ? {
+              ...profileBinding.credential,
+              isDefault: false,
+              defaultModel: profileBinding.profile.modelId,
+              thinkingLevel: null,
+            }
+          : hasModelOverride && modelChoice.modelProvider
             ? await findModelCredential(
                 deps.prisma,
                 run,
@@ -3516,11 +3571,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
               id: m.id,
               createdAt: m.createdAt?.toISOString(),
               seq: m.seq,
-              role: (m.role === "user" ? "user" : m.role === "system" ? "system" : "assistant") as
-                | "user"
-                | "assistant"
-                | "system",
-              content: messageToAgentHistoryText(m),
+              ...(nativeHarness
+                ? profileHistoryMessage(m, bot.id, messageToAgentHistoryText(m))
+                : {
+                    role: (m.role === "user"
+                      ? "user"
+                      : m.role === "system"
+                        ? "system"
+                        : "assistant") as "user" | "assistant" | "system",
+                    content: messageToAgentHistoryText(m),
+                  }),
             })),
             summary: thread.historyCompactionSummary,
             historyCompactedUpToSeq: thread.historyCompactedUpToSeq,
@@ -3581,16 +3641,26 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 context,
               )
             : Promise.resolve(null);
+        let nativeMediaError: string | undefined;
         const [
           discovered,
-          currentTurnImages,
+          currentTurnMedia,
           memoryContext,
           scratchpadContext,
           ticketContext,
           recalled,
         ] = await Promise.all([
           discoveredPromise,
-          loadCurrentTurnImages(deps, turnBlocks, context),
+          nativeHarness
+            ? loadCurrentTurnMedia(deps, turnBlocks, context).catch((error: unknown) => {
+                nativeMediaError =
+                  error instanceof Error ? error.message : "Attached native media is unavailable";
+                return { images: undefined, audio: undefined };
+              })
+            : loadCurrentTurnImages(deps, turnBlocks, context).then((images) => ({
+                images,
+                audio: undefined,
+              })),
           messagingChannelRun
             ? Promise.resolve("")
             : loadAgentMemoryContext(deps.memory, bot.id, context),
@@ -3608,6 +3678,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               }),
           recallPromise,
         ]);
+        const { images: currentTurnImages, audio: currentTurnAudio } = currentTurnMedia;
         const semanticMemoryEnabled = Boolean(semanticMemory) && !messagingChannelRun;
         let recalledMemory = "";
         let recallSucceeded = false;
@@ -3630,9 +3701,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
         }
         const runDeployment = deps.deploymentModelConfigured ? resolveDeploymentModel() : null;
         const runtimeFallback = runtimeFallbackModel(deps.runtime);
-        const pinError = run.modelPinned
-          ? pinnedModelCredentialError(modelChoice, overrideCredential)
-          : undefined;
+        const pinError =
+          !executionProfile && run.modelPinned
+            ? pinnedModelCredentialError(modelChoice, overrideCredential)
+            : undefined;
         const selected = selectConfiguredModel({
           override: modelChoice,
           overrideCredential,
@@ -3682,11 +3754,39 @@ export function createRunExecutor(deps: ExecutorDeps) {
             });
           }
         };
+        if (nativeMediaError) {
+          await failRunBeforeModel(nativeMediaError);
+          return;
+        }
+        if (profileError) {
+          await failRunBeforeModel(profileError);
+          return;
+        }
+        if (executionProfile && run.modelPinned && (run.modelProvider || run.modelId)) {
+          await failRunBeforeModel(
+            "A run model override cannot replace an execution profile. Clear the override first.",
+          );
+          return;
+        }
+        if (nativeHarness && !deps.primaryHarnessesEnabled) {
+          await failRunBeforeModel(
+            "Primary harnesses are disabled; select Pi explicitly or enable primary harnesses.",
+          );
+          return;
+        }
+        if (
+          profileBinding?.snapshot.computerId &&
+          profileBinding.snapshot.computerId !== bot.computerId
+        ) {
+          await failRunBeforeModel("Execution profile computer changed after this run was queued");
+          return;
+        }
         if (pinError) {
           await failRunBeforeModel(pinError);
           return;
         }
         if (
+          !executionProfile &&
           run.modelPinned &&
           (selected.provider !== modelChoice.modelProvider || selected.id !== modelChoice.modelId)
         ) {
@@ -3701,23 +3801,82 @@ export function createRunExecutor(deps: ExecutorDeps) {
         // Leaving it for the setup catch would retry and replace the message.
         let resolved: Awaited<ReturnType<typeof resolveModelKey>>;
         try {
-          resolved = await resolveModelKey(
-            deps,
-            run.userId,
-            run.spaceId,
-            credential,
-            runModelProvider,
-            runModelId,
-            (values) => runSecrets.push(...values),
-          );
+          if (nativeHarness && profileBinding) {
+            if (!profileBinding.profile.endpoint)
+              throw new Error("Native harness profiles require an explicit endpoint");
+            await assertSafeRemoteUrl(
+              profileBinding.profile.endpoint,
+              deps.secretHttp?.resolveHostname,
+            );
+            const nativeModel = await resolveProfileModel(
+              deps,
+              run,
+              profileBinding.profile,
+              profileBinding.credential,
+            );
+            if (
+              profileBinding.profile.inputModalities?.includes("image") &&
+              knownModelImageCapability({
+                provider: profileBinding.profile.provider,
+                modelId: profileBinding.profile.modelId,
+                endpoint: profileBinding.profile.endpoint,
+              }) === false
+            )
+              throw new Error("This profile's model does not support image input.");
+            resolved = {
+              apiKey: nativeModel.model.apiKey,
+              baseUrl: nativeModel.model.baseUrl,
+              maxTokens: nativeModel.model.maxTokens,
+              acceptsImages: profileBinding.profile.inputModalities?.includes("image") ?? false,
+              acceptsAudio: profileBinding.profile.inputModalities?.includes("audio") ?? false,
+              redact: nativeModel.redact,
+            };
+          } else {
+            resolved = await resolveModelKey(
+              deps,
+              run.userId,
+              run.spaceId,
+              credential,
+              runModelProvider,
+              runModelId,
+              (values) => runSecrets.push(...values),
+              Boolean(executionProfile),
+            );
+          }
         } catch (error) {
           // A dead or account-switched credential is already deleted. Retrying
           // setup would requeue the run and might fall back to another model.
-          if (!isTerminalModelSetupError(error)) throw error;
+          if (!executionProfile && !isTerminalModelSetupError(error)) throw error;
           await failRunBeforeModel(
             error instanceof Error ? error.message : "Connect the provider again.",
           );
           return;
+        }
+        if (executionProfile && !nativeHarness) {
+          try {
+            if (executionProfile.endpoint) {
+              await assertSafeRemoteUrl(
+                executionProfile.endpoint,
+                deps.secretHttp?.resolveHostname,
+              );
+              resolved.baseUrl = executionProfile.endpoint;
+            }
+            validatePiProfileModel(
+              {
+                provider: runModelProvider,
+                id: runModelId,
+                apiKey: resolved.apiKey,
+                baseUrl: resolved.baseUrl,
+              },
+              executionProfile.protocol,
+              executionProfile.endpoint,
+            );
+          } catch (error) {
+            await failRunBeforeModel(
+              error instanceof Error ? error.message : "Pi profile is incompatible",
+            );
+            return;
+          }
         }
         runSecrets.push(...resolved.redact);
         // A pin stays as it was created. Unpinned runs still record the model they
@@ -3733,6 +3892,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const storedComputer = bot.computer;
         const computerMode = parseComputerMode(storedComputer.scope);
         const computer = await provisionComputer(deps, storedComputer.id, context, "bot");
+        let primaryRuntime = deps.runtime;
         screenRelease = { computer, context };
         scheduleComputerSleep(deps.jobs, storedComputer.id);
         const workspaceCheckpoint = createRunWorkspaceCheckpoint(() =>
@@ -3766,12 +3926,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
         // Gate on the model this run will actually call — the pair written to the run row
         // above. Deriving it a second time here dropped the deployment fallback, so a
         // vision-capable default was gated as "scripted" and lost its screenshot tools.
-        const modelSeesImages = modelAcceptsImageInput(
-          runModelProvider,
-          runModelId,
-          resolved.acceptsImages,
-        );
-        const acceptsImages = deps.runtime.describe().capabilities.scripted || modelSeesImages;
+        const modelSeesImages = nativeHarness
+          ? resolved.acceptsImages === true
+          : modelAcceptsImageInput(runModelProvider, runModelId, resolved.acceptsImages);
+        const acceptsImages = nativeHarness
+          ? modelSeesImages
+          : deps.runtime.describe().capabilities.scripted || modelSeesImages;
         const groupContext = thread.groupId
           ? await loadGroupContext(deps.prisma, thread.groupId, {
               id: bot.id,
@@ -3877,7 +4037,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const approvedEffects = await deps.prisma.externalEffect.findMany({
           where: { runId, status: "approved" },
           orderBy: APPROVED_EFFECT_REPLAY_ORDER,
-          select: { kind: true, request: true },
+          select: { kind: true, request: true, idempotencyKey: true },
         });
         const approvedEffectReplays = createApprovedEffectReplayQueue(approvedEffects);
         const baseComputerInstruction = persistentComputerInstruction({
@@ -4037,6 +4197,28 @@ export function createRunExecutor(deps: ExecutorDeps) {
         };
 
         const mutatingEffectOccurrences = new Map<string, number>();
+        const nativePriorCompletedFingerprints = new Set<string>();
+        if (nativeHarness) {
+          // Keep effect ordinals monotonic across native attempts and cached helpers.
+          // Native transcript persistence is checked separately; the replay guard below
+          // rejects ambiguous completed signatures rather than assuming a reply was saved.
+          const completedEffects = await deps.prisma.externalEffect.findMany({
+            where: { runId, status: "completed" },
+            select: { kind: true, idempotencyKey: true },
+          });
+          for (const effect of completedEffects) {
+            if (!isToolEffectIdempotencyKey(effect.idempotencyKey, runId, effect.kind)) continue;
+            const match = /^(.*:[a-f0-9]{64})(?::(\d+))?$/.exec(effect.idempotencyKey);
+            if (!match) continue;
+            nativePriorCompletedFingerprints.add(match[1]!);
+            const next = Number(match[2] ?? 0) + 1;
+            if (!Number.isSafeInteger(next)) throw new Error("Invalid native effect occurrence");
+            mutatingEffectOccurrences.set(
+              match[1]!,
+              Math.max(mutatingEffectOccurrences.get(match[1]!) ?? 0, next),
+            );
+          }
+        }
         const consumedEffectIds = new Set<string>();
         const nextMutatingEffectOccurrence = (toolName: string, args: Record<string, unknown>) => {
           const fingerprint = toolEffectIdempotencyKey(runId, toolName, args);
@@ -4053,6 +4235,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
           observer?: AgentToolExecutionObserver,
         ) => {
           context.signal.throwIfAborted();
+          // A queued snapshot fixes routing, not authorization. Recheck revocation before every tool.
+          if (profileBinding) await resolveRunExecutionProfile(deps.prisma, run);
           if (handedOff) {
             return {
               error: "This stage was handed off. End the turn without more tool calls.",
@@ -4155,6 +4339,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           // reconstructs after the worker resumes. This also makes a changed reconstruction
           // hit the already-approved effect instead of creating a second approval card.
           const nextApprovedTool = approvedEffectReplays.nextToolName();
+          const nextApprovedEffectKey = approvedEffectReplays.nextIdempotencyKey();
           const nextApprovedRequest = approvedEffectReplays.nextRequest();
           const liveRoute =
             connectorCall.route?.resourceId &&
@@ -4315,6 +4500,24 @@ export function createRunExecutor(deps: ExecutorDeps) {
             name === "request_secret" ||
             needsApprovalEarly ||
             requiresApprovalByDefault;
+          // A host reply is not proof that a vendor persisted the tool result before
+          // an approval pause terminated its process. A resumed model can request the
+          // same mutation with a new vendor call ID. Never advance its ordinal and
+          // repeat a completed external effect merely because native history is missing.
+          // Exact approved keys remain authorized; fresh runs and distinct requests are
+          // unaffected. Ambiguous intentional repeats require a new user run.
+          if (
+            nativeHarness &&
+            !nextApprovedTool &&
+            !READ_ONLY_AGENT_TOOLS.has(name) &&
+            nativePriorCompletedFingerprints.has(
+              toolEffectIdempotencyKey(runId, replayEffectToolName, args),
+            )
+          ) {
+            throw new Error(
+              "This native continuation requested an action already completed before the pause. To prevent a duplicate effect, start a new user turn if you intend to repeat it.",
+            );
+          }
           // Count before choosing a key so an approved replay (occurrence 0 / base
           // key) cannot collide with a later identical-args call in this attempt.
           // request_secret stays single-use: retries must reuse the same card.
@@ -4322,10 +4525,30 @@ export function createRunExecutor(deps: ExecutorDeps) {
             name === "request_secret"
               ? 0
               : nextMutatingEffectOccurrence(replayEffectToolName, args);
+          if (
+            nativeHarness &&
+            nextApprovedTool &&
+            (!nextApprovedEffectKey ||
+              !isToolEffectIdempotencyKey(nextApprovedEffectKey, runId, replayEffectToolName))
+          ) {
+            throw new Error("Native approval is missing its durable effect identity");
+          }
           const effectKey =
-            usesApprovalKey && occurrence === 0
-              ? approvalEffectKey(runId, replayEffectToolName, args)
-              : toolEffectIdempotencyKey(runId, replayEffectToolName, args, occurrence);
+            nativeHarness && nextApprovedTool
+              ? nextApprovedEffectKey!
+              : usesApprovalKey && occurrence === 0
+                ? approvalEffectKey(runId, replayEffectToolName, args)
+                : toolEffectIdempotencyKey(runId, replayEffectToolName, args, occurrence);
+          if (nativeHarness && nextApprovedTool) {
+            const match = /^(.*:[a-f0-9]{64})(?::(\d+))?$/.exec(effectKey);
+            if (!match) throw new Error("Invalid native approved effect identity");
+            const next = Number(match[2] ?? 0) + 1;
+            if (!Number.isSafeInteger(next)) throw new Error("Invalid native effect occurrence");
+            mutatingEffectOccurrences.set(
+              match[1]!,
+              Math.max(mutatingEffectOccurrences.get(match[1]!) ?? 0, next),
+            );
+          }
           // Connector read-only hints must not bypass approval, review, or replay decisions.
           const applied = READ_ONLY_AGENT_TOOLS.has(name)
             ? undefined
@@ -6395,12 +6618,20 @@ export function createRunExecutor(deps: ExecutorDeps) {
             : Math.max(0, resolved.maxImagesPerPrompt - (currentTurnImages?.length ?? 0));
         // A text-only model keeps the [image:] marker. Putting image parts in
         // history makes the provider reject a follow-up that used to be text.
-        const historyWithImages = modelSeesImages
-          ? await withRecentTurnImages(deps, history, historyMessages, context, {
+        const historyWithImages = nativeHarness
+          ? await withNativeHistoryMedia(deps, history, historyMessages, context, {
               skipMessageId: currentTurnMessage?.id,
-              maxImages: modelImageBudget,
+              images: currentTurnImages,
+              audio: currentTurnAudio,
+              acceptsImages: resolved.acceptsImages === true,
+              acceptsAudio: resolved.acceptsAudio === true,
             })
-          : history;
+          : modelSeesImages
+            ? await withRecentTurnImages(deps, history, historyMessages, context, {
+                skipMessageId: currentTurnMessage?.id,
+                maxImages: modelImageBudget,
+              })
+            : history;
         const runtimeHistory = [...historicalContext, ...historyWithImages];
         // Without a roster a bot only knows the bots it spawned itself.
         const botDirectory = thread.groupId
@@ -6487,7 +6718,65 @@ export function createRunExecutor(deps: ExecutorDeps) {
         );
 
         try {
-          const runtimeEvents = deps.runtime.run(
+          if (nativeHarness && executionProfile) {
+            const sessionScope = {
+              spaceId: run.spaceId,
+              userId: run.userId,
+              botId: bot.id,
+              threadId: thread.id,
+              profileId: executionProfile.id,
+              runId,
+              leaseFence: fence,
+            };
+            const nativeSession = await claimNativeHarnessSession(deps.prisma, {
+              ...sessionScope,
+              startNewSession: run.trigger === "user" || run.trigger === "messaging",
+            });
+            nativeSessionScope = sessionScope;
+            primaryRuntime = createPrimaryHarnessRuntime({
+              harness: nativeHarness,
+              runtimeVersion: executionProfile.runtimeVersion,
+              protocol: ExecutionProtocolSchema.parse(executionProfile.protocol),
+              sandbox: deps.sandbox,
+              computer,
+              context,
+              accountId: executionProfile.credentialId,
+              profileId: executionProfile.id,
+              profileRevision: executionProfile.revision,
+              nativeCheckpoint: nativeSession.nativeSessionId ?? undefined,
+              sessionEpoch: nativeSession.epoch,
+              onCheckpoint: async (blob) => {
+                if (blob.length > 16_384)
+                  throw new Error("Harness checkpoint exceeds its size limit");
+                await updateNativeHarnessSession(deps.prisma, {
+                  ...sessionScope,
+                  nativeSessionId: blob,
+                });
+              },
+            });
+            let checking = false;
+            const timer = setInterval(() => {
+              if (checking || context.signal.aborted) return;
+              checking = true;
+              void Promise.all([
+                deps.prisma.run.findFirst({
+                  where: { id: runId, status: "running", leaseOwner: workerId, leaseFence: fence },
+                  select: { id: true },
+                }),
+                resolveRunExecutionProfile(deps.prisma, run),
+              ])
+                .then(([active]) => {
+                  if (!active) runAbortController?.abort();
+                })
+                .catch(() => runAbortController?.abort())
+                .finally(() => {
+                  checking = false;
+                });
+            }, 2_000);
+            timer.unref?.();
+            stopNativeWatch = () => clearInterval(timer);
+          }
+          const runtimeEvents = primaryRuntime.run(
             {
               botId: bot.id,
               threadId: thread.id,
@@ -6536,6 +6825,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 .join("\n\n"),
               history: runtimeHistory,
               currentTurnImages,
+              currentTurnAudio,
               tools,
               model: {
                 provider: runModelProvider,
@@ -6549,6 +6839,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 reasoning: resolved.reasoning,
                 maxTokens: resolved.maxTokens,
                 acceptsImages: resolved.acceptsImages,
+                acceptsAudio: resolved.acceptsAudio,
                 maxImagesPerPrompt: resolved.maxImagesPerPrompt,
                 thinkingLevel: thinkingLevel ?? resolved.thinkingLevel ?? null,
                 oauth: resolved.oauth
@@ -6559,26 +6850,32 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     }
                   : undefined,
               },
-              fallbackModels: fallbackModels.map(({ provider, modelId }) => ({
-                provider,
-                id: modelId,
-              })),
-              resolveFallbackModel: fallbackModelKeys.size
-                ? async (provider, modelId) => {
-                    const key = JSON.stringify([provider, modelId]);
-                    if (!fallbackModelKeys.has(key))
-                      throw new Error("Backup model is not selected");
-                    return resolveConnectedModel(
-                      { userId: run.userId, spaceId: run.spaceId },
-                      provider,
-                      modelId,
-                      (values) => runSecrets.push(...values),
-                      true,
-                    );
-                  }
-                : undefined,
+              fallbackModels: executionProfile
+                ? []
+                : fallbackModels.map(({ provider, modelId }) => ({
+                    provider,
+                    id: modelId,
+                  })),
+              resolveFallbackModel:
+                !executionProfile && fallbackModelKeys.size
+                  ? async (provider, modelId) => {
+                      const key = JSON.stringify([provider, modelId]);
+                      if (!fallbackModelKeys.has(key))
+                        throw new Error("Backup model is not selected");
+                      return resolveConnectedModel(
+                        { userId: run.userId, spaceId: run.spaceId },
+                        provider,
+                        modelId,
+                        (values) => runSecrets.push(...values),
+                        true,
+                      );
+                    }
+                  : undefined,
               onModelChange: async (provider, modelId) => {
-                if (!fallbackModelKeys.has(JSON.stringify([provider, modelId]))) {
+                if (
+                  executionProfile ||
+                  !fallbackModelKeys.has(JSON.stringify([provider, modelId]))
+                ) {
                   throw new Error("Backup model is not selected");
                 }
                 const updated = await deps.prisma.run.updateMany({
@@ -6674,8 +6971,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
             },
             context,
           );
-          for await (const event of withRuntimeCleanup(runtimeEvents, runAbortController)) {
-            if (approvalPausePending) return;
+          for await (const event of withRuntimeCleanup(
+            nativeHarness ? requireRuntimeCompletion(runtimeEvents) : runtimeEvents,
+            runAbortController,
+          )) {
+            if (approvalPausePending) {
+              nativeSessionOutcome = "paused";
+              return;
+            }
             if (!leaseValid) return;
             const now = Date.now();
             if (now - lastLeaseCheckAt >= 1_000) {
@@ -6772,6 +7075,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 offeredActions: event.actions,
               });
               if (!paused) return;
+              nativeSessionOutcome = "paused";
               await notifyRun(deps, run, {
                 kind: "help",
                 title: `${bot.name} needs an answer`,
@@ -6830,6 +7134,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               });
               if (!paused) return;
               retainComputerLease = true;
+              nativeSessionOutcome = "paused";
               await notifyRun(deps, run, {
                 kind: "takeover",
                 title: `${bot.name} needs you on the screen`,
@@ -7007,6 +7312,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 operationId: runId,
               });
             } else if (event.type === "done") {
+              nativeSessionOutcome = "completed";
               if (!assembled && event.text) {
                 if (publishedMidTurnUserMessage || discardedMidTurnNarration) {
                   // Mid-turn narration was already published or discarded (routines).
@@ -7020,7 +7326,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
           }
 
-          if (approvalPausePending || !leaseValid) return;
+          if (approvalPausePending || !leaseValid) {
+            if (approvalPausePending) nativeSessionOutcome = "paused";
+            return;
+          }
           approvedEffectReplays.assertDrained();
           pendingProgress += progressRedactor.finish();
           await flushProgress();
@@ -7186,6 +7495,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
             getLogger().error("history.compact enqueue failed", error);
           }
         } catch (error) {
+          if (approvalPausePending) {
+            nativeSessionOutcome = "paused";
+            return;
+          }
           if (!terminalCheckpointComplete) {
             await workspaceCheckpoint.flush().catch(() => undefined);
           }
@@ -7279,6 +7592,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
           throw new Error("Run setup failed; retrying");
         }
       } finally {
+        stopNativeWatch?.();
+        if (nativeSessionScope) {
+          await updateNativeHarnessSession(deps.prisma, {
+            ...nativeSessionScope,
+            outcome: nativeSessionOutcome,
+          }).catch((error) =>
+            getLogger().error(
+              "native session reconciliation failed",
+              redactSecrets(error instanceof Error ? error.message : String(error), runSecrets),
+            ),
+          );
+        }
         detachShutdown?.();
         clearInterval(heartbeat);
         if (!retainComputerLease) {
@@ -8432,6 +8757,7 @@ async function resolveModelKey(
   maxTokens?: number;
   thinkingLevel?: AgentRunRequest["model"]["thinkingLevel"];
   acceptsImages?: boolean;
+  acceptsAudio?: boolean;
   maxImagesPerPrompt?: number;
   oauth?: AgentModelOAuthCredential;
   persistOAuth?: (credential: AgentModelOAuthCredential) => Promise<void>;
