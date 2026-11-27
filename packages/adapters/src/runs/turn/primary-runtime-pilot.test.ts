@@ -38,6 +38,21 @@ it("rejects changed credentials rather than resolving another account", async ()
   );
 });
 
+it.skipIf(process.platform !== "linux")(
+  "does not launch a queued native handoff on a different connection after the pin is lost",
+  async () => {
+    vi.stubEnv("PRIMARY_RUNTIME_PILOT_BOT_IDS", run.botId);
+    vi.stubEnv("PRIMARY_RUNTIME_PILOT_GROUP_BOT_IDS", run.botId);
+    vi.stubEnv("PRIMARY_RUNTIME_PILOT_HANDOFF_BOT_IDS", run.botId);
+    vi.stubEnv("PRIMARY_RUNTIME_PILOT_LAUNCHER", process.execPath);
+    const queuedHandoff = { ...run, trigger: "follow_up" };
+    await expect(loadPilotRuntime(queuedHandoff, model, true)).resolves.toHaveProperty("run");
+    await expect(
+      loadPilotRuntime(queuedHandoff, { ...model, connectionId: "unrelated-key" }, true),
+    ).rejects.toThrow("exact API-key connection");
+  },
+);
+
 it("rejects a queued pilot turn after operator enrolment was removed", async () => {
   vi.stubEnv("PRIMARY_RUNTIME_PILOT_BOT_IDS", "");
   vi.stubEnv("PRIMARY_RUNTIME_PILOT_LAUNCHER", process.execPath);
@@ -139,7 +154,7 @@ it("builds a fresh group request from the exact source, with no history, reply q
         },
       },
     },
-    select: { id: true, threadId: true, blocks: true },
+    select: { id: true, threadId: true, botId: true, runId: true, clientNonce: true, blocks: true },
   });
   await expect(
     pilotGroupRequest(prisma as never, {
@@ -156,4 +171,68 @@ it("builds a fresh group request from the exact source, with no history, reply q
     ],
   });
   await expect(pilotGroupRequest(prisma as never, input)).rejects.toThrow("addressed text");
+});
+
+it("projects only a genuine first handoff after rechecking the live sender and origin", async () => {
+  vi.stubEnv("PRIMARY_RUNTIME_PILOT_BOT_IDS", run.botId);
+  vi.stubEnv("PRIMARY_RUNTIME_PILOT_GROUP_BOT_IDS", run.botId);
+  vi.stubEnv("PRIMARY_RUNTIME_PILOT_HANDOFF_BOT_IDS", run.botId);
+  const input = {
+    run: {
+      ...run,
+      trigger: "follow_up",
+      id: "receiving-run",
+      userId: "owner",
+      spaceId: "space",
+      threadId: "thread",
+      sourceMessageId: "handoff",
+    },
+    thread: { id: "thread", botId: null, groupId: "group", externalConversationId: null },
+    model,
+    onUsage: undefined,
+    redactions: [],
+  };
+  const source = {
+    id: "handoff",
+    threadId: "thread",
+    botId: "sender",
+    runId: "source-run",
+    clientNonce: "group-handoff:source-run",
+    blocks: [{ kind: "handoff", fromBotId: "sender", toBotId: "bot", text: "Next stage", hop: 1 }],
+  };
+  const prisma = {
+    message: { findFirst: vi.fn().mockResolvedValue(source) },
+    run: { findFirst: vi.fn().mockResolvedValue({ id: "source-run" }) },
+  };
+  await expect(pilotGroupRequest(prisma as never, input)).resolves.toEqual({
+    botId: "bot",
+    threadId: "thread",
+    runId: "receiving-run",
+    sourceMessageId: "handoff",
+    prompt: "Next stage",
+    instructions: "",
+    history: [],
+    tools: [],
+    model,
+    onUsage: undefined,
+  });
+  expect(prisma.run.findFirst).toHaveBeenCalledWith({
+    where: expect.objectContaining({
+      id: "source-run",
+      status: { in: ["running", "completed"] },
+      botId: "sender",
+      spaceId: "space",
+      threadId: "thread",
+      userId: "owner",
+      trigger: "user",
+      primaryRuntime: null,
+      sourceMessage: { role: "user", threadId: "thread", authorUserId: "owner" },
+    }),
+    select: { id: true },
+  });
+  prisma.run.findFirst.mockResolvedValueOnce(null);
+  await expect(pilotGroupRequest(prisma as never, input)).rejects.toThrow("verified handoff");
+  prisma.message.findFirst.mockResolvedValueOnce({ ...source, clientNonce: "different-source" });
+  await expect(pilotGroupRequest(prisma as never, input)).rejects.toThrow("verified handoff");
+  expect(prisma.run.findFirst).toHaveBeenCalledTimes(2);
 });
