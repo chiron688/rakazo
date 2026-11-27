@@ -64,6 +64,7 @@ const NOT_PASSED: Record<string, string> = {
   PRIMARY_RUNTIME_PILOT_GROUP_CONTINUITY_BOT_IDS: "group continuity for the source-run pilot",
   PRIMARY_RUNTIME_PILOT_ROUTINES: "exact routine admission for the source-run pilot",
   PRIMARY_RUNTIME_PILOT_OUTBOUND_BOT_IDS: "outbound handoff admission for the source-run pilot",
+  CLAUDE_CODE_PROJECT_DIR_NAME: "set only for an isolated SDK child, never inherited from Compose",
   EMAIL_EMULATOR: "ignored when NODE_ENV=production",
   BILLING_EMULATOR: "ignored when NODE_ENV=production",
   NODE_USE_ENV_PROXY:
