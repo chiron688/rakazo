@@ -59,6 +59,7 @@ const NOT_PASSED: Record<string, string> = {
   // No Compose stack installs that launcher or enables the pilot.
   PRIMARY_RUNTIME_PILOT_BOT_IDS: "opt-in native runtime on a source-run deployment",
   PRIMARY_RUNTIME_PILOT_LAUNCHER: "operator-owned isolated launcher on a source-run deployment",
+  PRIMARY_RUNTIME_PILOT_GROUP_BOT_IDS: "explicit group admission for the source-run pilot",
   EMAIL_EMULATOR: "ignored when NODE_ENV=production",
   BILLING_EMULATOR: "ignored when NODE_ENV=production",
   NODE_USE_ENV_PROXY:
